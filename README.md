@@ -1,5 +1,11 @@
 # SMS Verify — 手机号短信验证服务
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/WPKF-CN/cf-sms-verify/tree/main/worker)
+
+> 点上面这个按钮，Cloudflare 会自动克隆仓库、创建 D1 数据库并回填 ID、建表、构建部署、完成绑定。
+> 全程不需要命令行，客户只需要自己准备 Twilio 账号和后台密码。
+> 详见 [一键部署说明.md](./一键部署说明.md)。
+
 给落地页加一道「人机检测 → 短信验证码 → 才跳转 WhatsApp」的关卡。
 一个 Cloudflare Worker 同时提供：双短信通道（Twilio / Plivo）、频控、验证记录、免验证凭证、网页管理后台。
 
