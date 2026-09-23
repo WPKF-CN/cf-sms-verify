@@ -11,11 +11,14 @@
  *
  * 后台（密码登录）：
  *   GET  /admin                     后台页面
+ *   GET  /admin/api/setup-status    是否已初始化（是否需要创建管理员）
+ *   POST /admin/api/setup           首次创建管理员账号
  *   POST /admin/api/login|logout    登录 / 退出
  *   GET  /admin/api/stats           统计
  *   GET  /admin/api/records         记录列表（支持筛选 + 分页）
  *   GET  /admin/api/records.csv     导出 CSV
  *   GET/PUT /admin/api/config       读取 / 保存配置
+ *   GET/PUT /admin/api/credentials  短信商/Turnstile 凭证（存在 D1，加密）
  *   GET  /admin/api/providers       通道配置状态
  *   POST /admin/api/test-send       测试发送
  */
@@ -44,6 +47,15 @@ import {
 } from './lib/utils.js';
 import { verifyTurnstile } from './lib/turnstile.js';
 import { sendCode, checkCode, providerStatus } from './lib/providers.js';
+import { loadSecrets, setSecret, secretsStatus } from './lib/secrets.js';
+import {
+  hasAdmin,
+  createAdmin,
+  verifyLogin,
+  changeAdminPassword,
+  listAdmins,
+  sessionUser,
+} from './lib/auth.js';
 import {
   checkSendLimit,
   recordSendAttempt,
@@ -59,9 +71,40 @@ import {
   checkLoginLimit,
   cleanup,
 } from './lib/db.js';
-import { verifyPassword, createSession, sessionCookie, clearCookie, isAuthed } from './lib/auth.js';
+import { createSession, sessionCookie, clearCookie, isAuthed } from './lib/auth.js';
 
 const CORS_HEADERS = 'POST, GET, OPTIONS';
+
+/**
+ * 需要在后台配置的凭证键名。
+ * 这些值存在 D1（AES-GCM 加密），不再要求部署时填写。
+ */
+const SECRET_KEYS = [
+  // 短信通道
+  'TWILIO_ACCOUNT_SID',
+  'TWILIO_AUTH_TOKEN',
+  'TWILIO_VERIFY_SERVICE_SID',
+  'PLIVO_AUTH_ID',
+  'PLIVO_AUTH_TOKEN',
+  'PLIVO_APP_UUID',
+  'ONBUKA_API_KEY',
+  'ONBUKA_API_PWD',
+  'ONBUKA_APP_ID',
+  'ONBUKA_SENDER_ID',
+  'ONBUKA_TEMPLATE',
+  // 人机检测
+  'TURNSTILE_SECRET',
+  // 运行时开关
+  'MOCK_MODE',
+];
+
+/** 自建验证码的有效期（分钟） */
+const CODE_TTL_MIN = 10;
+
+/** 验证码过期时间（D1 的 datetime 格式，UTC） */
+function codeExpiry(minutes = CODE_TTL_MIN) {
+  return new Date(Date.now() + minutes * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+}
 
 /* ───────────── 通用辅助 ───────────── */
 
@@ -117,9 +160,12 @@ async function handleSend(env, request, origin, ip) {
     return corsJson({ ok: false, error: 'NO_COUNTRY_CONFIGURED' }, 503, corsOrigin);
   }
 
+  // 凭证（短信商密钥、Turnstile Secret）从数据库读取，后台可随时修改
+  const secrets = await loadSecrets(env, SECRET_KEYS);
+
   // 1) 人机检测（在发短信前，避免被刷）
   if (cfg.turnstileEnabled && cfg.turnstileSiteKey) {
-    const ts = await verifyTurnstile(env, { token: body.turnstileToken, ip });
+    const ts = await verifyTurnstile(secrets, { token: body.turnstileToken, ip, mockMode: secrets.MOCK_MODE });
     if (!ts.ok) {
       return corsJson({ ok: false, error: 'TURNSTILE_FAILED', detail: ts.error }, 403, corsOrigin);
     }
@@ -154,7 +200,11 @@ async function handleSend(env, request, origin, ip) {
 
   // 4) 调用短信通道（auto 模式自动容灾）
   const locale = body.locale || 'en';
-  const result = await sendCode(env, cfg, { to: parsed.e164, locale });
+  const result = await sendCode(secrets, cfg, {
+    to: parsed.e164,
+    locale,
+    codeLength: 6,
+  });
   const site = sanitizeSite(body.site);
   const id = await createVerification(env, {
     site,
@@ -167,6 +217,9 @@ async function handleSend(env, request, origin, ip) {
     ip,
     ua: userAgent(request),
     origin: origin || null,
+    codeHash: result.codeHash || null,
+    codeSalt: result.codeSalt || null,
+    codeExpiresAt: result.codeHash ? codeExpiry() : null,
   });
 
   if (!result.ok) {
@@ -228,11 +281,23 @@ async function handleCheck(env, request, origin) {
   }
 
   await incrementAttempts(env, id);
-  const verified = await checkCode(env, {
+
+  // 自建验证码通道（Onbuka / mock）：先检查是否过期，再本地比对哈希
+  if (row.code_hash) {
+    if (row.code_expires_at && new Date(row.code_expires_at.replace(' ', 'T') + 'Z') < new Date()) {
+      await markStatus(env, id, 'expired');
+      return corsJson({ ok: false, error: 'CODE_EXPIRED' }, 400, corsOrigin);
+    }
+  }
+
+  const secrets = await loadSecrets(env, SECRET_KEYS);
+  const verified = await checkCode(secrets, {
     provider: row.provider,
     ref: row.provider_ref,
     code,
     to: row.phone,
+    storedHash: row.code_hash,
+    storedSalt: row.code_salt,
   });
 
   if (!verified.ok) {
@@ -311,15 +376,40 @@ function adminUnauthorized() {
 }
 
 async function handleAdminApi(env, request, path, ip) {
-  /* 登录 / 退出 / 会话状态：不需要已登录 */
+  /* ── 以下接口不需要登录 ── */
+
+  /* 是否已初始化（决定前端显示"创建账号"还是"登录"） */
+  if (path === '/admin/api/setup-status') {
+    const initialized = await hasAdmin(env);
+    return json({ ok: true, initialized });
+  }
+
+  /* 首次创建管理员账号 */
+  if (path === '/admin/api/setup') {
+    if (await hasAdmin(env)) {
+      return json({ ok: false, error: 'ADMIN_ALREADY_EXISTS' }, 409);
+    }
+    const limit = await checkLoginLimit(env, ip);
+    if (!limit.allowed) return json({ ok: false, error: 'TOO_MANY_ATTEMPTS' }, 429);
+
+    const body = await readJson(request);
+    const res = await createAdmin(env, body.username, body.password);
+    if (!res.ok) return json({ ok: false, error: res.error }, 400);
+
+    const value = await createSession(env, res.username);
+    return json({ ok: true, username: res.username }, 200, {
+      'set-cookie': sessionCookie(value, { secure: true }),
+    });
+  }
+
   if (path === '/admin/api/login') {
     const limit = await checkLoginLimit(env, ip);
     if (!limit.allowed) return json({ ok: false, error: 'TOO_MANY_ATTEMPTS' }, 429);
     const body = await readJson(request);
-    const ok = await verifyPassword(env, body.password);
-    if (!ok) return json({ ok: false, error: 'BAD_CREDENTIALS' }, 401);
-    const value = await createSession(env);
-    return json({ ok: true }, 200, {
+    const res = await verifyLogin(env, body.username, body.password);
+    if (!res.ok) return json({ ok: false, error: res.error }, 401);
+    const value = await createSession(env, res.username);
+    return json({ ok: true, username: res.username }, 200, {
       'set-cookie': sessionCookie(value, { secure: true }),
     });
   }
@@ -328,10 +418,10 @@ async function handleAdminApi(env, request, path, ip) {
   }
   if (path === '/admin/api/session') {
     const authed = await isAuthed(env, request);
-    return json({ ok: true, authed });
+    return json({ ok: true, authed, username: authed ? sessionUser(request) : null });
   }
 
-  /* 以下接口都需要登录 */
+  /* ── 以下接口都需要登录 ── */
   if (!(await isAuthed(env, request))) return adminUnauthorized();
 
   if (path === '/admin/api/stats') {
@@ -363,6 +453,43 @@ async function handleAdminApi(env, request, path, ip) {
     });
   }
 
+  /* ── 凭证管理（短信商密钥 / Turnstile Secret）── */
+
+  if (path === '/admin/api/credentials' && request.method === 'GET') {
+    // 只返回"是否已配置"，绝不返回明文
+    const status = await secretsStatus(env, SECRET_KEYS);
+    return json({ ok: true, status });
+  }
+
+  if (path === '/admin/api/credentials' && (request.method === 'PUT' || request.method === 'POST')) {
+    const body = await readJson(request);
+    const incoming = body.credentials || body || {};
+    const updated = [];
+    for (const [key, value] of Object.entries(incoming)) {
+      if (!SECRET_KEYS.includes(key)) continue; // 只允许白名单内的键
+      // 值为空字符串表示"不修改"（避免误清空），用 null 表示显式清除
+      if (value === '') continue;
+      await setSecret(env, key, value === null ? '' : String(value).trim());
+      updated.push(key);
+    }
+    const status = await secretsStatus(env, SECRET_KEYS);
+    return json({ ok: true, updated, status });
+  }
+
+  /* 修改自己的密码 */
+  if (path === '/admin/api/password' && request.method === 'POST') {
+    const body = await readJson(request);
+    const me = sessionUser(request);
+    if (!me || me === 'env-admin') {
+      return json({ ok: false, error: 'NOT_DB_ADMIN' }, 400);
+    }
+    // 先验证旧密码
+    const check = await verifyLogin(env, me, body.currentPassword);
+    if (!check.ok) return json({ ok: false, error: 'BAD_CREDENTIALS' }, 401);
+    const res = await changeAdminPassword(env, me, body.newPassword);
+    return json({ ok: res.ok, error: res.error }, res.ok ? 200 : 400);
+  }
+
   if (path === '/admin/api/config' && request.method === 'GET') {
     const cfg = await loadConfig(env, { force: true });
     return json({ ok: true, config: cfg });
@@ -376,10 +503,11 @@ async function handleAdminApi(env, request, path, ip) {
   }
 
   if (path === '/admin/api/providers') {
+    const secrets = await loadSecrets(env, SECRET_KEYS);
     return json({
       ok: true,
-      providers: providerStatus(env),
-      mockMode: String(env.MOCK_MODE || '0') === '1',
+      providers: providerStatus(secrets),
+      mockMode: String(secrets.MOCK_MODE || '0') === '1',
     });
   }
 
@@ -388,26 +516,18 @@ async function handleAdminApi(env, request, path, ip) {
       ok: true,
       countries: buildCountryList(Object.keys(COUNTRY_META)),
       defaults: DEFAULT_CONFIG,
-      secrets: {
-        ADMIN_PASSWORD_HASH: Boolean(env.ADMIN_PASSWORD_HASH),
-        SESSION_SECRET: Boolean(env.SESSION_SECRET),
-        TURNSTILE_SECRET: Boolean(env.TURNSTILE_SECRET),
-        TWILIO_ACCOUNT_SID: Boolean(env.TWILIO_ACCOUNT_SID),
-        TWILIO_AUTH_TOKEN: Boolean(env.TWILIO_AUTH_TOKEN),
-        TWILIO_VERIFY_SERVICE_SID: Boolean(env.TWILIO_VERIFY_SERVICE_SID),
-        PLIVO_AUTH_ID: Boolean(env.PLIVO_AUTH_ID),
-        PLIVO_AUTH_TOKEN: Boolean(env.PLIVO_AUTH_TOKEN),
-        PLIVO_APP_UUID: Boolean(env.PLIVO_APP_UUID),
-      },
+      secretKeys: SECRET_KEYS,
+      admins: await listAdmins(env),
     });
   }
 
   if (path === '/admin/api/test-send') {
     const body = await readJson(request);
     const cfg = await loadConfig(env, { force: true });
+    const secrets = await loadSecrets(env, SECRET_KEYS);
     const parsed = normalizePhone(body.national || body.phone, body.country || 'US');
     if (!parsed.ok) return json({ ok: false, error: parsed.error }, 400);
-    const result = await sendCode(env, cfg, { to: parsed.e164, locale: 'en' });
+    const result = await sendCode(secrets, cfg, { to: parsed.e164, locale: 'en', codeLength: 6 });
     await createVerification(env, {
       site: 'admin-test',
       phone: parsed.e164,
@@ -419,8 +539,18 @@ async function handleAdminApi(env, request, path, ip) {
       ip: clientIp(request),
       ua: 'admin-console',
       origin: 'admin',
+      codeHash: result.codeHash || null,
+      codeSalt: result.codeSalt || null,
+      codeExpiresAt: result.codeHash ? codeExpiry() : null,
     });
-    return json({ ok: result.ok, provider: result.provider, error: result.error, tried: result.tried });
+    return json({
+      ok: result.ok,
+      provider: result.provider,
+      error: result.error,
+      tried: result.tried,
+      // 自建验证码通道：把验证码回显给管理员，方便测试（仅测试接口）
+      code: result.code || null,
+    });
   }
 
   return json({ ok: false, error: 'NOT_FOUND' }, 404);

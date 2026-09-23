@@ -84,8 +84,9 @@ export async function checkLoginLimit(env, ip) {
 export async function createVerification(env, data) {
   const result = await env.DB.prepare(
     `INSERT INTO verifications
-       (site, phone, country, provider, provider_ref, send_status, send_error, ip, ua, origin, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       (site, phone, country, provider, provider_ref, send_status, send_error, ip, ua, origin,
+        code_hash, code_salt, code_expires_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
   )
     .bind(
       data.site,
@@ -98,6 +99,9 @@ export async function createVerification(env, data) {
       data.ip,
       data.ua,
       data.origin,
+      data.codeHash || null,
+      data.codeSalt || null,
+      data.codeExpiresAt || null,
     )
     .run();
   return result.meta?.last_row_id;

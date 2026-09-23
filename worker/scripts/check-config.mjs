@@ -34,44 +34,12 @@ if (!authed) {
   problems.push('尚未登录 Cloudflare —— 先运行 npx wrangler login');
 }
 
-/* 3. 密钥是否已配置（仅登录后检查） */
-if (authed) {
-  const res = spawnSync('npx', ['wrangler', 'secret', 'list', '--format', 'json'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const out = `${res.stdout || ''}${res.stderr || ''}`;
-
-  // Worker 还不存在时会报错，这属于首次部署的正常情况
-  if (res.status !== 0 && !/not found|does not exist|10007/i.test(out)) {
-    warnings.push('无法读取密钥列表（首次部署可忽略）');
-  }
-
-  let names = [];
-  try {
-    const parsed = JSON.parse((res.stdout || '').trim() || '[]');
-    names = Array.isArray(parsed) ? parsed.map((s) => s.name) : [];
-  } catch {
-    names = (res.stdout || '').match(/"name"\s*:\s*"([^"]+)"/g)?.map((s) => s.match(/"([^"]+)"$/)[1]) || [];
-  }
-  const has = (n) => names.includes(n);
-
-  if (!has('ADMIN_PASSWORD_HASH')) problems.push('缺少密钥 ADMIN_PASSWORD_HASH（后台密码）—— 运行 npm run secrets');
-  if (!has('SESSION_SECRET')) problems.push('缺少密钥 SESSION_SECRET —— 运行 npm run secrets');
-
-  const twilioOk = has('TWILIO_ACCOUNT_SID') && has('TWILIO_AUTH_TOKEN') && has('TWILIO_VERIFY_SERVICE_SID');
-  const plivoOk = has('PLIVO_AUTH_ID') && has('PLIVO_AUTH_TOKEN') && has('PLIVO_APP_UUID');
-  if (!twilioOk && !plivoOk) {
-    problems.push('Twilio 和 Plivo 都没有配齐，部署后无法发送验证码 —— 运行 npm run secrets');
-  }
-  if (twilioOk && !has('TWILIO_VERIFY_SERVICE_SID')) {
-    problems.push('Twilio 缺少 TWILIO_VERIFY_SERVICE_SID（VA 开头）');
-  }
-  if (!has('TURNSTILE_SECRET')) {
-    warnings.push('未配置 TURNSTILE_SECRET —— 人机检测不会生效，上线后建议补上');
-  }
-}
+/*
+ * 3. 密钥检查已移除
+ *
+ * 现在后台账号密码在首次访问 /admin 时创建，短信商密钥和 Turnstile Secret
+ * 都在后台「配置」页填写（加密存 D1），因此部署前不再需要检查环境变量。
+ */
 
 /* 4. 输出 */
 warnings.forEach((w) => console.log(`  \x1b[33m!\x1b[0m 提醒：${w}`));

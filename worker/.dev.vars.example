@@ -1,26 +1,13 @@
 # ============================================================
-# 部署时会提示你填写这些值（复制本文件为 .dev.vars 可本地调试）
+# 部署时无需填写任何密钥！
+#
+# · 后台账号密码：部署后访问 <你的地址>/admin，首次打开会引导你设置
+# · 短信商密钥 / Turnstile Secret：登录后台 →「配置」标签里填写
+#   （加密存入你自己的 D1 数据库，改完即时生效，无需重新部署）
+#
+# 本文件只用于本地开发（复制为 .dev.vars）。唯一可选项：
 # ============================================================
 
-# 后台登录密码的 SHA-256 哈希（不是明文密码！）
-# 生成方式：npm run hash -- 你的密码
-ADMIN_PASSWORD_HASH=
-
-# 后台会话签名密钥，随便一串长随机字符
-# 生成方式：openssl rand -hex 32
-SESSION_SECRET=
-
-# Cloudflare Turnstile 的 Secret Key（人机检测，可选但强烈建议）
-# 获取：Cloudflare 控制台 → Turnstile → Add widget
-TURNSTILE_SECRET=
-
-# ─── Twilio Verify（要真发短信就必填这三项）───
-# 获取：https://console.twilio.com → Account Info / Verify → Services
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_VERIFY_SERVICE_SID=
-
-# ─── Plivo Verify（可选，需先联系 Plivo 开通）───
-PLIVO_AUTH_ID=
-PLIVO_AUTH_TOKEN=
-PLIVO_APP_UUID=
+# 调试模式：设为 1 时不发真实短信，验证码固定 123456
+# 线上也可以在后台「配置 → 运行模式」里切换
+MOCK_MODE=1

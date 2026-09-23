@@ -87,13 +87,40 @@
 </head>
 <body>
 
-<!-- 登录 -->
+<!-- 登录 / 首次初始化 -->
 <div id="login" hidden>
   <form class="box" id="loginForm">
-    <h1>SMS Verify 控制台</h1>
-    <p>请输入管理密码</p>
-    <label class="f"><span>密码</span><input type="password" id="pwd" autocomplete="current-password" style="width:100%" /></label>
-    <button class="btn" style="width:100%" type="submit">登录</button>
+    <h1 id="loginTitle">SMS Verify 控制台</h1>
+    <p id="loginHint">请输入管理密码</p>
+
+    <!-- 首次使用：创建管理员账号 -->
+    <div id="setupFields" hidden>
+      <label class="f"><span>管理员账号</span>
+        <input type="text" id="setupUser" value="admin" autocomplete="username" style="width:100%" />
+      </label>
+      <label class="f"><span>设置密码（至少 8 位）</span>
+        <input type="password" id="setupPwd" autocomplete="new-password" style="width:100%" />
+      </label>
+      <label class="f"><span>确认密码</span>
+        <input type="password" id="setupPwd2" autocomplete="new-password" style="width:100%" />
+      </label>
+      <button class="btn" style="width:100%" type="submit" id="setupBtn">创建并进入后台</button>
+      <div class="hint" style="margin-top:10px">
+        这是首次使用，请设置后台账号密码。密码用 PBKDF2 加密后存入你自己的数据库。
+      </div>
+    </div>
+
+    <!-- 已有账号：登录 -->
+    <div id="loginFields">
+      <label class="f"><span>账号</span>
+        <input type="text" id="user" value="admin" autocomplete="username" style="width:100%" />
+      </label>
+      <label class="f"><span>密码</span>
+        <input type="password" id="pwd" autocomplete="current-password" style="width:100%" />
+      </label>
+      <button class="btn" style="width:100%" type="submit">登录</button>
+    </div>
+
     <div class="msg err" id="loginMsg"></div>
   </form>
 </div>
@@ -189,14 +216,18 @@
               <option value="auto">auto（按顺序容灾）</option>
               <option value="twilio">仅 Twilio</option>
               <option value="plivo">仅 Plivo</option>
+              <option value="onbuka">仅 Onbuka</option>
               <option value="mock">mock（调试）</option>
             </select>
           </label>
           <label class="f"><span>优先级 1</span>
-            <select id="cfgPri1"><option>twilio</option><option>plivo</option></select>
+            <select id="cfgPri1"><option>twilio</option><option>plivo</option><option>onbuka</option></select>
           </label>
           <label class="f"><span>优先级 2</span>
-            <select id="cfgPri2"><option>plivo</option><option>twilio</option><option value="">（无）</option></select>
+            <select id="cfgPri2"><option>plivo</option><option>twilio</option><option>onbuka</option><option value="">（无）</option></select>
+          </label>
+          <label class="f"><span>优先级 3</span>
+            <select id="cfgPri3"><option value="">（无）</option><option>onbuka</option><option>twilio</option><option>plivo</option></select>
           </label>
           <label class="f"><span>重发间隔（秒）</span><input type="number" id="cfgResend" min="0" /></label>
           <label class="f"><span>单号码每日上限</span><input type="number" id="cfgPhoneDaily" min="0" /></label>
@@ -215,9 +246,56 @@
             <select id="cfgTsEnabled"><option value="1">启用</option><option value="0">关闭</option></select>
           </label>
           <label class="f"><span>Site Key（前端公开）</span><input id="cfgTsKey" placeholder="0x4AAA..." /></label>
-          <label class="f"><span>Secret 状态</span><input id="cfgTsSecret" disabled /></label>
+          <label class="f"><span>Secret Key（保密）</span>
+            <input id="credTurnstileSecret" type="password" placeholder="未设置则留空" autocomplete="off" />
+          </label>
         </div>
-        <div class="hint">Secret Key 通过 <code>wrangler secret put TURNSTILE_SECRET</code> 设置，不在此处填写。</div>
+        <div class="hint">Secret Key 保存在你自己的数据库里（加密存储），后台可直接修改。留空表示不修改。</div>
+      </div>
+
+      <div class="card">
+        <h2>短信通道凭证</h2>
+        <div class="hint" style="margin-bottom:12px">
+          填在这里的密钥会加密存入你自己的数据库，不需要重新部署即可生效。留空表示不修改。
+        </div>
+
+        <h3 style="font-size:13px;margin:14px 0 8px;color:#8b95a5">Twilio Verify</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+          <label class="f"><span>Account SID（AC 开头）</span><input id="credTwilioSid" autocomplete="off" /></label>
+          <label class="f"><span>Auth Token</span><input id="credTwilioToken" type="password" autocomplete="off" /></label>
+          <label class="f"><span>Verify Service SID（VA 开头）</span><input id="credTwilioService" autocomplete="off" /></label>
+        </div>
+
+        <h3 style="font-size:13px;margin:18px 0 8px;color:#8b95a5">Plivo Verify</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+          <label class="f"><span>Auth ID</span><input id="credPlivoId" autocomplete="off" /></label>
+          <label class="f"><span>Auth Token</span><input id="credPlivoToken" type="password" autocomplete="off" /></label>
+          <label class="f"><span>Verify App UUID</span><input id="credPlivoApp" autocomplete="off" /></label>
+        </div>
+
+        <h3 style="font-size:13px;margin:18px 0 8px;color:#8b95a5">Onbuka</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+          <label class="f"><span>Api-Key</span><input id="credOnbukaKey" autocomplete="off" /></label>
+          <label class="f"><span>API Secret（密码）</span><input id="credOnbukaPwd" type="password" autocomplete="off" /></label>
+          <label class="f"><span>应用 ID（appId）</span><input id="credOnbukaApp" autocomplete="off" /></label>
+          <label class="f"><span>Sender ID（可选）</span><input id="credOnbukaSender" autocomplete="off" /></label>
+          <label class="f"><span>短信模板</span>
+            <input id="credOnbukaTemplate" placeholder="Your verification code is {code}" autocomplete="off" />
+          </label>
+        </div>
+        <div class="hint">
+          Onbuka 是普通短信网关（没有 OTP 校验接口），验证码由本服务生成并校验，有效期 10 分钟。
+          模板里用 <code>{code}</code> 表示验证码、<code>{brand}</code> 表示品牌名。
+          签名规则 <code>md5(Api-Key + API Secret + 时间戳)</code> 已按官方文档实现。
+        </div>
+
+        <h3 style="font-size:13px;margin:18px 0 8px;color:#8b95a5">运行模式</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+          <label class="f"><span>调试模式（不发真实短信）</span>
+            <select id="credMockMode"><option value="">保持不变</option><option value="0">关闭</option><option value="1">开启</option></select>
+          </label>
+        </div>
+        <div class="hint">开启后不会真发短信，验证码固定为 <code>123456</code>，适合本地或上线前试跑。</div>
       </div>
 
       <div class="card">
@@ -305,14 +383,50 @@
   function showLogin() { $('login').hidden = false; $('app').hidden = true; }
   function showApp() { $('login').hidden = true; $('app').hidden = false; }
 
-  /* ── 登录 ── */
+  var needsSetup = false;
+
+  /** 根据是否已初始化，切换"创建账号"与"登录"两种界面 */
+  function applySetupMode(initialized) {
+    needsSetup = !initialized;
+    $('setupFields').hidden = initialized;
+    $('loginFields').hidden = !initialized;
+    $('loginTitle').textContent = initialized ? 'SMS Verify 控制台' : '欢迎使用 SMS Verify';
+    $('loginHint').textContent = initialized ? '请输入账号密码' : '首次使用，请先创建管理员账号';
+  }
+
+  /* ── 登录 / 首次初始化 ── */
   $('loginForm').addEventListener('submit', function (e) {
     e.preventDefault();
     $('loginMsg').textContent = '';
-    api('/admin/api/login', { method: 'POST', body: { password: $('pwd').value } })
+
+    if (needsSetup) {
+      var p1 = $('setupPwd').value;
+      var p2 = $('setupPwd2').value;
+      if (p1.length < 8) { $('loginMsg').textContent = '密码至少 8 位'; return; }
+      if (p1 !== p2) { $('loginMsg').textContent = '两次输入的密码不一致'; return; }
+      api('/admin/api/setup', {
+        method: 'POST',
+        body: { username: $('setupUser').value.trim(), password: p1 },
+      }).then(function (res) {
+        if (res.ok) { showApp(); boot(); }
+        else {
+          $('loginMsg').textContent = {
+            PASSWORD_TOO_SHORT: '密码至少 8 位',
+            USERNAME_INVALID: '账号只能包含字母、数字、. _ @ -（3-64 位）',
+            ADMIN_ALREADY_EXISTS: '账号已存在，请刷新页面重试',
+          }[res.error] || '创建失败';
+        }
+      }).catch(function () { $('loginMsg').textContent = '创建失败'; });
+      return;
+    }
+
+    api('/admin/api/login', {
+      method: 'POST',
+      body: { username: $('user').value.trim(), password: $('pwd').value },
+    })
       .then(function (res) {
         if (res.ok) { showApp(); boot(); }
-        else $('loginMsg').textContent = res.error === 'TOO_MANY_ATTEMPTS' ? '尝试次数过多，请稍后再试' : '密码错误';
+        else $('loginMsg').textContent = res.error === 'TOO_MANY_ATTEMPTS' ? '尝试次数过多，请稍后再试' : '账号或密码错误';
       })
       .catch(function () { $('loginMsg').textContent = '登录失败'; });
   });
@@ -452,8 +566,10 @@
       updateCount();
 
       $('cfgProvider').value = config.provider;
-      $('cfgPri1').value = (config.providerPriority || [])[0] || 'twilio';
-      $('cfgPri2').value = (config.providerPriority || [])[1] || '';
+      var pri = config.providerPriority || [];
+      $('cfgPri1').value = pri[0] || 'twilio';
+      $('cfgPri2').value = pri[1] || '';
+      $('cfgPri3').value = pri[2] || '';
       $('cfgResend').value = config.resendIntervalSec;
       $('cfgPhoneDaily').value = config.phoneDailyLimit;
       $('cfgIpHourly').value = config.ipHourlyLimit;
@@ -473,14 +589,36 @@
       }).join('');
 
       var s = meta.secrets || {};
-      $('cfgTsSecret').value = s.TURNSTILE_SECRET ? '已设置' : '未设置';
+      loadCredentials();
+    });
+  }
+
+  /** 读取凭证配置状态（不返回明文，只标记哪些已配置） */
+  function loadCredentials() {
+    api('/admin/api/credentials').then(function (res) {
+      if (!res.ok) return;
+      var s = res.status || {};
+      var keys = [
+        ['credTwilioSid', 'TWILIO_ACCOUNT_SID'], ['credTwilioToken', 'TWILIO_AUTH_TOKEN'],
+        ['credTwilioService', 'TWILIO_VERIFY_SERVICE_SID'],
+        ['credPlivoId', 'PLIVO_AUTH_ID'], ['credPlivoToken', 'PLIVO_AUTH_TOKEN'],
+        ['credPlivoApp', 'PLIVO_APP_UUID'],
+        ['credOnbukaKey', 'ONBUKA_API_KEY'], ['credOnbukaPwd', 'ONBUKA_API_PWD'],
+        ['credOnbukaApp', 'ONBUKA_APP_ID'], ['credOnbukaSender', 'ONBUKA_SENDER_ID'],
+        ['credOnbukaTemplate', 'ONBUKA_TEMPLATE'],
+        ['credTurnstileSecret', 'TURNSTILE_SECRET'],
+      ];
+      keys.forEach(function (pair) {
+        var input = $(pair[0]);
+        if (!input) return;
+        var configured = s[pair[1]];
+        input.placeholder = configured ? '已设置（留空则不修改）' : '未设置';
+        input.style.borderColor = configured ? 'rgba(46,204,113,.45)' : '';
+      });
       $('secretHint').innerHTML = Object.keys(s).map(function (k) {
         return '<span class="pill" style="margin:3px 4px 0 0;display:inline-block">' + k +
           ': ' + (s[k] ? '<span style="color:#6ee7a8">已设置</span>' : '<span style="color:#ff9b95">未设置</span>') + '</span>';
       }).join('');
-
-      var mock = meta.defaults; // 仅用于占位，实际 mock 状态在测试页展示
-      void mock;
     });
   }
 
@@ -508,7 +646,7 @@
     var selected = [].map.call(document.querySelectorAll('#cList input:checked'), function (i) { return i.value; });
     var texts = {};
     [].forEach.call(document.querySelectorAll('[data-text-key]'), function (i) { texts[i.dataset.textKey] = i.value; });
-    var pri = [$('cfgPri1').value, $('cfgPri2').value].filter(Boolean);
+    var pri = [$('cfgPri1').value, $('cfgPri2').value, $('cfgPri3').value].filter(Boolean);
 
     var patch = {
       allowedCountries: selected,
@@ -530,9 +668,48 @@
     };
 
     api('/admin/api/config', { method: 'PUT', body: { config: patch } }).then(function (res) {
-      $('cfgMsg').className = 'msg ' + (res.ok ? 'ok' : 'err');
-      $('cfgMsg').textContent = res.ok ? '已保存，10 秒内对所有落地页生效' : '保存失败';
-      if (res.ok) loadConfig();
+      if (!res.ok) {
+        $('cfgMsg').className = 'msg err';
+        $('cfgMsg').textContent = '保存失败';
+        return;
+      }
+      // 凭证单独保存：只提交填了值的项，留空表示不修改
+      var creds = {};
+      [['credTwilioSid','TWILIO_ACCOUNT_SID'], ['credTwilioToken','TWILIO_AUTH_TOKEN'],
+       ['credTwilioService','TWILIO_VERIFY_SERVICE_SID'],
+       ['credPlivoId','PLIVO_AUTH_ID'], ['credPlivoToken','PLIVO_AUTH_TOKEN'],
+       ['credPlivoApp','PLIVO_APP_UUID'],
+       ['credOnbukaKey','ONBUKA_API_KEY'], ['credOnbukaPwd','ONBUKA_API_PWD'],
+       ['credOnbukaApp','ONBUKA_APP_ID'], ['credOnbukaSender','ONBUKA_SENDER_ID'],
+       ['credOnbukaTemplate','ONBUKA_TEMPLATE'],
+       ['credTurnstileSecret','TURNSTILE_SECRET'],
+       ['credMockMode','MOCK_MODE']].forEach(function (pair) {
+        var v = $(pair[0]) ? $(pair[0]).value.trim() : '';
+        if (v !== '') creds[pair[1]] = v;
+      });
+
+      var done = function () {
+        $('cfgMsg').className = 'msg ok';
+        $('cfgMsg').textContent = '已保存，10 秒内对所有落地页生效';
+        loadConfig();
+      };
+      if (Object.keys(creds).length) {
+        api('/admin/api/credentials', { method: 'PUT', body: { credentials: creds } })
+          .then(function (r) {
+            if (!r.ok) {
+              $('cfgMsg').className = 'msg err';
+              $('cfgMsg').textContent = '凭证保存失败';
+              return;
+            }
+            // 清空密码类输入框，避免明文停留在页面上
+            [['credTwilioToken'], ['credPlivoToken'], ['credOnbukaPwd'], ['credTurnstileSecret']]
+              .forEach(function (p) { if ($(p[0])) $(p[0]).value = ''; });
+            if ($('credMockMode')) $('credMockMode').value = '';
+            done();
+          });
+      } else {
+        done();
+      }
     });
   });
   $('reloadConfig').addEventListener('click', function () { $('cfgMsg').textContent = ''; loadConfig(); });
@@ -585,9 +762,20 @@
     loadStats();
   }
 
+  /* ── 启动：先判断是否需要初始化，再决定显示哪种界面 ── */
   api('/admin/api/session').then(function (res) {
-    if (res && res.authed) { showApp(); boot(); } else { showLogin(); }
-  }).catch(showLogin);
+    if (res && res.authed) { showApp(); boot(); return; }
+    api('/admin/api/setup-status').then(function (s) {
+      applySetupMode(Boolean(s && s.initialized));
+      showLogin();
+    }).catch(function () {
+      applySetupMode(true);
+      showLogin();
+    });
+  }).catch(function () {
+    applySetupMode(true);
+    showLogin();
+  });
 })();
 </script>
 </body>
