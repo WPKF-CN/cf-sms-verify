@@ -3,11 +3,10 @@ name = "sms-verify"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 
-# ─── 非敏感配置（敏感信息用 wrangler secret put 设置，不要写在这里）───
-[vars]
-# 本地演示模式：设为 "1" 时使用 mock 短信通道（不真发短信，验证码固定 123456）
-# 生产环境请删除此行或设为 "0"
-MOCK_MODE = "0"
+# ─── 没有任何需要部署时填写的变量 ───
+# 所有配置（短信商密钥、Turnstile Secret、调试模式、国家白名单等）
+# 都在部署完成后于后台页面 /admin 里设置，不需要在这里声明。
+# 本地开发时可复制 .dev.vars.example 为 .dev.vars 来开启调试模式。
 
 # ─── D1 数据库（记录 + 配置 + 频控）───
 [[d1_databases]]
