@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>SMS Verify 控制台</title>
+<style>
+  :root {
+    --bg: #0c0e12; --panel: #14171d; --panel2: #1a1e26; --line: #262c37;
+    --text: #e8ecf3; --muted: #8b95a5; --accent: #4c8dff; --ok: #2ecc71;
+    --warn: #f5a623; --err: #ff5f57;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); }
+  code { background: #0a0c10; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  /* 登录 */
+  #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #login .box { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 26px; }
+  #login h1 { margin: 0 0 4px; font-size: 18px; }
+  #login p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  /* 布局 */
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 14px 20px;
+    border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 20;
+  }
+  header h1 { margin: 0; font-size: 15px; font-weight: 700; }
+  header .sp { flex: 1; }
+  nav { display: flex; gap: 6px; padding: 14px 20px 0; flex-wrap: wrap; }
+  nav button {
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+    padding: 7px 14px; border-radius: 9px; cursor: pointer; font-size: 13.5px;
+  }
+  nav button.on { background: var(--panel2); color: var(--text); border-color: #38414f; }
+  main { padding: 16px 20px 60px; max-width: 1280px; }
+  section { display: none; }
+  section.on { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { margin: 0 0 12px; font-size: 14px; font-weight: 700; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .kpi { background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; padding: 13px 14px; }
+  .kpi .n { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .kpi .l { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr:hover { background: #171b22; }
+  .scroll { overflow-x: auto; }
+  input, select, textarea, button {
+    font-family: inherit; font-size: 13.5px; color: var(--text);
+    background: #0e1116; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input[type=color] { padding: 2px; height: 36px; width: 60px; }
+  textarea { width: 100%; min-height: 84px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  label.f { display: block; margin-bottom: 12px; }
+  label.f > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+  .btn { background: var(--accent); border: 0; color: #fff; font-weight: 600; padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: var(--panel2); border: 1px solid var(--line); color: var(--text); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+  .b-verified { background: rgba(46,204,113,.15); color: #6ee7a8; }
+  .b-pending { background: rgba(245,166,35,.15); color: #f7c46c; }
+  .b-failed, .b-expired { background: rgba(255,95,87,.15); color: #ff9b95; }
+  .b-muted { background: #202631; color: #9aa4b2; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .muted { color: var(--muted); }
+  .tiny { font-size: 12px; }
+  .msg { margin-top: 10px; font-size: 13px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .cbox { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px; background: #0e1116; }
+  .cbox input { padding: 0; }
+  .clist { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 7px; max-height: 320px; overflow-y: auto; padding: 2px; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 110px; padding-top: 18px; }
+  .bars .bar { flex: 1 1 26px; max-width: 56px; background: linear-gradient(180deg, var(--accent), #2c5fb8); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
+  .bars .bar span { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); }
+  .bars .bar i { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); font-style: normal; }
+  .pill { background: var(--panel2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- 登录 -->
+<div id="login" hidden>
+  <form class="box" id="loginForm">
+    <h1>SMS Verify 控制台</h1>
+    <p>请输入管理密码</p>
+    <label class="f"><span>密码</span><input type="password" id="pwd" autocomplete="current-password" style="width:100%" /></label>
+    <button class="btn" style="width:100%" type="submit">登录</button>
+    <div class="msg err" id="loginMsg"></div>
+  </form>
+</div>
+
+<!-- 主体 -->
+<div id="app" hidden>
+  <header>
+    <h1>SMS Verify 控制台</h1>
+    <span class="pill" id="mockFlag" hidden>MOCK 模式</span>
+    <span class="sp"></span>
+    <button class="btn ghost" id="logout">退出</button>
+  </header>
+  <nav>
+    <button data-tab="overview" class="on">概览</button>
+    <button data-tab="records">记录</button>
+    <button data-tab="config">配置</button>
+    <button data-tab="test">测试</button>
+  </nav>
+  <main>
+    <!-- 概览 -->
+    <section id="tab-overview" class="on">
+      <div class="card">
+        <h2>近 30 天</h2>
+        <div class="grid" id="kpis"></div>
+      </div>
+      <div class="card">
+        <h2>近 14 天趋势</h2>
+        <div class="bars" id="bars"></div>
+        <div style="height:24px"></div>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+        <div class="card"><h2>按国家</h2><div class="scroll"><table id="byCountry"></table></div></div>
+        <div class="card"><h2>按通道</h2><div class="scroll"><table id="byProvider"></table></div></div>
+        <div class="card"><h2>按站点</h2><div class="scroll"><table id="bySite"></table></div></div>
+      </div>
+    </section>
+
+    <!-- 记录 -->
+    <section id="tab-records">
+      <div class="card">
+        <div class="row">
+          <label class="f" style="margin:0"><span>手机号</span><input id="fPhone" placeholder="4155..." /></label>
+          <label class="f" style="margin:0"><span>状态</span>
+            <select id="fStatus">
+              <option value="">全部</option><option>pending</option><option>verified</option>
+              <option>failed</option><option>expired</option>
+            </select>
+          </label>
+          <label class="f" style="margin:0"><span>通道</span>
+            <select id="fProvider">
+              <option value="">全部</option><option>twilio</option><option>plivo</option><option>mock</option>
+            </select>
+          </label>
+          <label class="f" style="margin:0"><span>站点</span><input id="fSite" placeholder="ai-lander" style="width:130px" /></label>
+          <label class="f" style="margin:0"><span>起</span><input type="date" id="fFrom" /></label>
+          <label class="f" style="margin:0"><span>止</span><input type="date" id="fTo" /></label>
+          <button class="btn" id="doSearch">查询</button>
+          <button class="btn ghost" id="doReset">重置</button>
+          <button class="btn ghost" id="doExport">导出 CSV</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="scroll"><table id="records"></table></div>
+        <div class="row" style="margin-top:12px;align-items:center">
+          <button class="btn ghost" id="prevPage">上一页</button>
+          <span class="muted tiny" id="pageInfo"></span>
+          <button class="btn ghost" id="nextPage">下一页</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 配置 -->
+    <section id="tab-config">
+      <div class="card">
+        <h2>允许的国家（只勾一个国家 = 只允许该国）</h2>
+        <div class="row" style="margin-bottom:8px">
+          <input id="cSearch" placeholder="搜索国家 / 代码" style="width:190px" />
+          <button class="btn ghost" data-preset="US">仅美国</button>
+          <button class="btn ghost" data-preset="US,CA">美 + 加</button>
+          <button class="btn ghost" data-preset="US,CA,GB,AU,IE,NZ">英语区</button>
+          <button class="btn ghost" data-preset="US,CA,GB,IE,DE,FR,IT,ES,PT,NL,BE,AT,CH,SE,NO,DK,FI,AU,NZ">欧美</button>
+          <button class="btn ghost" data-preset="__clear">清空</button>
+          <span class="tiny muted" id="cCount"></span>
+        </div>
+        <div class="clist" id="cList"></div>
+      </div>
+
+      <div class="card">
+        <h2>通道与风控</h2>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+          <label class="f"><span>短信通道</span>
+            <select id="cfgProvider">
+              <option value="auto">auto（按顺序容灾）</option>
+              <option value="twilio">仅 Twilio</option>
+              <option value="plivo">仅 Plivo</option>
+              <option value="mock">mock（调试）</option>
+            </select>
+          </label>
+          <label class="f"><span>优先级 1</span>
+            <select id="cfgPri1"><option>twilio</option><option>plivo</option></select>
+          </label>
+          <label class="f"><span>优先级 2</span>
+            <select id="cfgPri2"><option>plivo</option><option>twilio</option><option value="">（无）</option></select>
+          </label>
+          <label class="f"><span>重发间隔（秒）</span><input type="number" id="cfgResend" min="0" /></label>
+          <label class="f"><span>单号码每日上限</span><input type="number" id="cfgPhoneDaily" min="0" /></label>
+          <label class="f"><span>单 IP 每小时上限</span><input type="number" id="cfgIpHourly" min="0" /></label>
+          <label class="f"><span>全站每小时上限</span><input type="number" id="cfgGlobal" min="0" /></label>
+          <label class="f"><span>单次最多试错次数</span><input type="number" id="cfgAttempts" min="1" /></label>
+          <label class="f"><span>验证通过后免验时长（小时）</span><input type="number" id="cfgGrantTtl" min="0" /></label>
+        </div>
+        <div class="hint">免验时长设 0 表示每次点击都要重新验证。</div>
+      </div>
+
+      <div class="card">
+        <h2>人机检测（Cloudflare Turnstile）</h2>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+          <label class="f"><span>启用</span>
+            <select id="cfgTsEnabled"><option value="1">启用</option><option value="0">关闭</option></select>
+          </label>
+          <label class="f"><span>Site Key（前端公开）</span><input id="cfgTsKey" placeholder="0x4AAA..." /></label>
+          <label class="f"><span>Secret 状态</span><input id="cfgTsSecret" disabled /></label>
+        </div>
+        <div class="hint">Secret Key 通过 <code>wrangler secret put TURNSTILE_SECRET</code> 设置，不在此处填写。</div>
+      </div>
+
+      <div class="card">
+        <h2>跳转链接</h2>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+          <label class="f"><span>链接模式</span>
+            <select id="cfgLinkMode">
+              <option value="client">client（链接留在落地页）</option>
+              <option value="server">server（验证通过后下发）</option>
+            </select>
+          </label>
+          <label class="f"><span>主题色</span><input type="color" id="cfgAccent" /></label>
+        </div>
+        <label class="f"><span>WhatsApp 链接池（每行一条，server 模式使用）</span>
+          <textarea id="cfgLinks" placeholder="https://chat.whatsapp.com/xxxx"></textarea>
+        </label>
+      </div>
+
+      <div class="card">
+        <h2>允许调用的站点来源</h2>
+        <label class="f"><span>每行一个域名（<code>*</code> 表示不限制）</span>
+          <textarea id="cfgOrigins" placeholder="https://lander-a.com&#10;https://lander-b.com"></textarea>
+        </label>
+        <div class="hint">生产环境建议填具体域名，避免别人盗用你的短信额度。</div>
+      </div>
+
+      <div class="card">
+        <h2>弹窗文案</h2>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))" id="textsGrid"></div>
+      </div>
+
+      <div class="row" style="position:sticky;bottom:0;padding:12px 0;background:linear-gradient(180deg,transparent,var(--bg) 40%)">
+        <button class="btn" id="saveConfig">保存配置</button>
+        <button class="btn ghost" id="reloadConfig">放弃修改</button>
+        <span class="msg" id="cfgMsg"></span>
+      </div>
+    </section>
+
+    <!-- 测试 -->
+    <section id="tab-test">
+      <div class="card">
+        <h2>发送测试短信</h2>
+        <div class="row">
+          <label class="f" style="margin:0"><span>国家</span><select id="tCountry" style="width:150px"></select></label>
+          <label class="f" style="margin:0"><span>号码</span><input id="tPhone" placeholder="4155552671" style="width:180px" /></label>
+          <button class="btn" id="doTest">发送</button>
+        </div>
+        <div class="msg" id="testMsg"></div>
+        <div class="hint">测试发送不受国家白名单与频控限制，但会记入记录（站点标记为 admin-test）。</div>
+      </div>
+      <div class="card">
+        <h2>通道配置状态</h2>
+        <div class="scroll"><table id="providers"></table></div>
+        <div class="hint" id="secretHint"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var page = 1, pageSize = 20, total = 0, meta = null, config = null;
+
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(path, {
+      method: opts.method || 'GET',
+      headers: { 'content-type': 'application/json' },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      credentials: 'same-origin',
+    }).then(function (r) {
+      if (r.status === 401) { showLogin(); throw new Error('unauthorized'); }
+      return r.json();
+    });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function showLogin() { $('login').hidden = false; $('app').hidden = true; }
+  function showApp() { $('login').hidden = true; $('app').hidden = false; }
+
+  /* ── 登录 ── */
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('loginMsg').textContent = '';
+    api('/admin/api/login', { method: 'POST', body: { password: $('pwd').value } })
+      .then(function (res) {
+        if (res.ok) { showApp(); boot(); }
+        else $('loginMsg').textContent = res.error === 'TOO_MANY_ATTEMPTS' ? '尝试次数过多，请稍后再试' : '密码错误';
+      })
+      .catch(function () { $('loginMsg').textContent = '登录失败'; });
+  });
+
+  $('logout').addEventListener('click', function () {
+    api('/admin/api/logout', { method: 'POST' }).then(showLogin);
+  });
+
+  /* ── Tab ── */
+  [].forEach.call(document.querySelectorAll('nav button'), function (btn) {
+    btn.addEventListener('click', function () {
+      [].forEach.call(document.querySelectorAll('nav button'), function (b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      [].forEach.call(document.querySelectorAll('section'), function (s) { s.classList.remove('on'); });
+      $('tab-' + btn.dataset.tab).classList.add('on');
+      if (btn.dataset.tab === 'overview') loadStats();
+      if (btn.dataset.tab === 'records') loadRecords();
+      if (btn.dataset.tab === 'config') loadConfig();
+      if (btn.dataset.tab === 'test') loadProviders();
+    });
+  });
+
+  /* ── 概览 ── */
+  function loadStats() {
+    api('/admin/api/stats').then(function (res) {
+      if (!res.ok) return;
+      var o = res.overview;
+      var rate = o.total ? Math.round((o.verified / o.total) * 100) : 0;
+      $('kpis').innerHTML = [
+        ['发送总数', o.total], ['验证通过', o.verified], ['验证率', rate + '%'],
+        ['发送失败', o.sendFailed], ['已跳转', o.redirected], ['近 1 小时', o.lastHour],
+      ].map(function (k) {
+        return '<div class="kpi"><div class="n">' + esc(k[1]) + '</div><div class="l">' + k[0] + '</div></div>';
+      }).join('');
+
+      var max = Math.max.apply(null, res.daily.map(function (d) { return d.n; }).concat([1]));
+      $('bars').innerHTML = res.daily.map(function (d) {
+        var h = Math.max(2, Math.round((d.n / max) * 88));
+        return '<div class="bar" style="height:' + h + 'px" title="' + esc(d.day) + ' 发送 ' + d.n + ' / 通过 ' + d.verified + '">' +
+          '<i>' + (d.n || 0) + '</i><span>' + esc((d.day || '').slice(5)) + '</span></div>';
+      }).join('') || '<div class="muted tiny">暂无数据</div>';
+
+      renderSimple($('byCountry'), ['国家', '发送', '通过'], res.byCountry.map(function (r) { return [r.country || '-', r.n, r.verified]; }));
+      renderSimple($('byProvider'), ['通道', '发送', '失败'], res.byProvider.map(function (r) { return [r.provider || '-', r.n, r.failed]; }));
+      renderSimple($('bySite'), ['站点', '发送', '通过'], res.bySite.map(function (r) { return [r.site || '-', r.n, r.verified]; }));
+    });
+  }
+
+  function renderSimple(table, head, rows) {
+    table.innerHTML = '<thead><tr>' + head.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      (rows.length ? rows.map(function (r) {
+        return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+      }).join('') : '<tr><td colspan="' + head.length + '" class="muted">暂无数据</td></tr>') + '</tbody>';
+  }
+
+  /* ── 记录 ── */
+  function recordQuery() {
+    var q = new URLSearchParams();
+    q.set('page', page); q.set('pageSize', pageSize);
+    if ($('fPhone').value.trim()) q.set('phone', $('fPhone').value.trim());
+    if ($('fStatus').value) q.set('status', $('fStatus').value);
+    if ($('fProvider').value) q.set('provider', $('fProvider').value);
+    if ($('fSite').value.trim()) q.set('site', $('fSite').value.trim());
+    if ($('fFrom').value) q.set('from', $('fFrom').value + ' 00:00:00');
+    if ($('fTo').value) q.set('to', $('fTo').value + ' 23:59:59');
+    return q;
+  }
+
+  function statusBadge(s) {
+    var cls = { verified: 'b-verified', pending: 'b-pending', failed: 'b-failed', expired: 'b-expired' }[s] || 'b-muted';
+    return '<span class="badge ' + cls + '">' + esc(s) + '</span>';
+  }
+
+  function loadRecords() {
+    var q = recordQuery();
+    api('/admin/api/records?' + q.toString()).then(function (res) {
+      if (!res.ok) return;
+      total = res.total;
+      $('records').innerHTML =
+        '<thead><tr><th>时间(UTC)</th><th>站点</th><th>手机号</th><th>国家</th><th>通道</th><th>发送</th><th>状态</th><th>试错</th><th>跳转</th><th>IP</th></tr></thead><tbody>' +
+        (res.rows.length ? res.rows.map(function (r) {
+          return '<tr>' +
+            '<td class="tiny">' + esc(r.created_at) + '</td>' +
+            '<td>' + esc(r.site) + '</td>' +
+            '<td>' + esc(r.phone) + '</td>' +
+            '<td>' + esc(r.country || '-') + '</td>' +
+            '<td>' + esc(r.provider || '-') + '</td>' +
+            '<td>' + (r.send_status === 'sent' ? '<span class="badge b-verified">sent</span>' : '<span class="badge b-failed">' + esc(r.send_status) + '</span>') + '</td>' +
+            '<td>' + statusBadge(r.status) + '</td>' +
+            '<td>' + esc(r.attempts) + '</td>' +
+            '<td class="tiny">' + esc(r.redirect_at || '-') + '</td>' +
+            '<td class="tiny muted">' + esc(r.ip || '-') + '</td>' +
+          '</tr>';
+        }).join('') : '<tr><td colspan="10" class="muted">暂无记录</td></tr>') + '</tbody>';
+      var pages = Math.max(1, Math.ceil(total / pageSize));
+      $('pageInfo').textContent = '第 ' + page + ' / ' + pages + ' 页，共 ' + total + ' 条';
+      $('prevPage').disabled = page <= 1;
+      $('nextPage').disabled = page >= pages;
+    });
+  }
+
+  $('doSearch').addEventListener('click', function () { page = 1; loadRecords(); });
+  $('doReset').addEventListener('click', function () {
+    ['fPhone', 'fSite', 'fFrom', 'fTo'].forEach(function (id) { $(id).value = ''; });
+    $('fStatus').value = ''; $('fProvider').value = '';
+    page = 1; loadRecords();
+  });
+  $('prevPage').addEventListener('click', function () { if (page > 1) { page -= 1; loadRecords(); } });
+  $('nextPage').addEventListener('click', function () { page += 1; loadRecords(); });
+  $('doExport').addEventListener('click', function () {
+    window.location.href = '/admin/api/records.csv?' + recordQuery().toString();
+  });
+
+  /* ── 配置 ── */
+  var TEXT_FIELDS = [
+    ['title', '标题'], ['subtitle', '副标题'], ['phoneLabel', '手机号标签'], ['sendBtn', '发送按钮'],
+    ['codeLabel', '验证码标签'], ['verifyBtn', '验证按钮'], ['resend', '重发按钮'],
+    ['back', '返回改号'], ['securityNote', '底部说明'],
+    ['errorPhone', '错误：号码无效'], ['errorCountry', '错误：国家不支持'], ['errorCode', '错误：验证码错误'],
+    ['errorRateLimit', '错误：太频繁'], ['errorResend', '错误：重发过快'],
+    ['errorTurnstile', '错误：人机检测'], ['errorGeneric', '错误：通用'],
+  ];
+
+  function loadConfig() {
+    Promise.all([api('/admin/api/config'), api('/admin/api/meta')]).then(function (rs) {
+      if (!rs[0].ok) return;
+      config = rs[0].config;
+      meta = rs[1];
+
+      // 国家列表
+      $('cList').innerHTML = meta.countries.map(function (c) {
+        var on = (config.allowedCountries || []).indexOf(c.iso2) >= 0 ? ' checked' : '';
+        return '<label class="cbox" data-iso="' + c.iso2 + '" data-text="' + esc((c.name + ' ' + c.iso2 + ' ' + c.dial).toLowerCase()) + '">' +
+          '<input type="checkbox" value="' + c.iso2 + '"' + on + '/>' +
+          '<span>' + esc(c.name) + ' <span class="muted">+' + c.dial + '</span></span></label>';
+      }).join('');
+      updateCount();
+
+      $('cfgProvider').value = config.provider;
+      $('cfgPri1').value = (config.providerPriority || [])[0] || 'twilio';
+      $('cfgPri2').value = (config.providerPriority || [])[1] || '';
+      $('cfgResend').value = config.resendIntervalSec;
+      $('cfgPhoneDaily').value = config.phoneDailyLimit;
+      $('cfgIpHourly').value = config.ipHourlyLimit;
+      $('cfgGlobal').value = config.globalHourlyLimit;
+      $('cfgAttempts').value = config.codeMaxAttempts;
+      $('cfgGrantTtl').value = config.grantTtlHours;
+      $('cfgTsEnabled').value = config.turnstileEnabled ? '1' : '0';
+      $('cfgTsKey').value = config.turnstileSiteKey || '';
+      $('cfgLinkMode').value = config.linkMode;
+      $('cfgAccent').value = config.accentColor || '#30a05c';
+      $('cfgLinks').value = (config.whatsappLinks || []).join('\n');
+      $('cfgOrigins').value = (config.allowedOrigins || []).join('\n');
+
+      $('textsGrid').innerHTML = TEXT_FIELDS.map(function (f) {
+        return '<label class="f"><span>' + f[1] + ' <code>' + f[0] + '</code></span>' +
+          '<input data-text-key="' + f[0] + '" value="' + esc((config.texts || {})[f[0]] || '') + '" /></label>';
+      }).join('');
+
+      var s = meta.secrets || {};
+      $('cfgTsSecret').value = s.TURNSTILE_SECRET ? '已设置' : '未设置';
+      $('secretHint').innerHTML = Object.keys(s).map(function (k) {
+        return '<span class="pill" style="margin:3px 4px 0 0;display:inline-block">' + k +
+          ': ' + (s[k] ? '<span style="color:#6ee7a8">已设置</span>' : '<span style="color:#ff9b95">未设置</span>') + '</span>';
+      }).join('');
+
+      var mock = meta.defaults; // 仅用于占位，实际 mock 状态在测试页展示
+      void mock;
+    });
+  }
+
+  function updateCount() {
+    var n = document.querySelectorAll('#cList input:checked').length;
+    $('cCount').textContent = '已选 ' + n + ' 个国家';
+  }
+  $('cList').addEventListener('change', updateCount);
+  $('cSearch').addEventListener('input', function () {
+    var kw = this.value.trim().toLowerCase();
+    [].forEach.call(document.querySelectorAll('#cList .cbox'), function (box) {
+      box.style.display = !kw || box.dataset.text.indexOf(kw) >= 0 ? '' : 'none';
+    });
+  });
+  [].forEach.call(document.querySelectorAll('[data-preset]'), function (btn) {
+    btn.addEventListener('click', function () {
+      var val = btn.dataset.preset;
+      var set = val === '__clear' ? [] : val.split(',');
+      [].forEach.call(document.querySelectorAll('#cList input'), function (i) { i.checked = set.indexOf(i.value) >= 0; });
+      updateCount();
+    });
+  });
+
+  $('saveConfig').addEventListener('click', function () {
+    var selected = [].map.call(document.querySelectorAll('#cList input:checked'), function (i) { return i.value; });
+    var texts = {};
+    [].forEach.call(document.querySelectorAll('[data-text-key]'), function (i) { texts[i.dataset.textKey] = i.value; });
+    var pri = [$('cfgPri1').value, $('cfgPri2').value].filter(Boolean);
+
+    var patch = {
+      allowedCountries: selected,
+      provider: $('cfgProvider').value,
+      providerPriority: pri,
+      resendIntervalSec: Number($('cfgResend').value) || 0,
+      phoneDailyLimit: Number($('cfgPhoneDaily').value) || 0,
+      ipHourlyLimit: Number($('cfgIpHourly').value) || 0,
+      globalHourlyLimit: Number($('cfgGlobal').value) || 0,
+      codeMaxAttempts: Number($('cfgAttempts').value) || 5,
+      grantTtlHours: Number($('cfgGrantTtl').value) || 0,
+      turnstileEnabled: $('cfgTsEnabled').value === '1',
+      turnstileSiteKey: $('cfgTsKey').value.trim(),
+      linkMode: $('cfgLinkMode').value,
+      accentColor: $('cfgAccent').value,
+      whatsappLinks: $('cfgLinks').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
+      allowedOrigins: $('cfgOrigins').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
+      texts: texts,
+    };
+
+    api('/admin/api/config', { method: 'PUT', body: { config: patch } }).then(function (res) {
+      $('cfgMsg').className = 'msg ' + (res.ok ? 'ok' : 'err');
+      $('cfgMsg').textContent = res.ok ? '已保存，10 秒内对所有落地页生效' : '保存失败';
+      if (res.ok) loadConfig();
+    });
+  });
+  $('reloadConfig').addEventListener('click', function () { $('cfgMsg').textContent = ''; loadConfig(); });
+
+  /* ── 测试 ── */
+  function loadProviders() {
+    api('/admin/api/providers').then(function (res) {
+      if (!res.ok) return;
+      $('mockFlag').hidden = !res.mockMode;
+      $('providers').innerHTML = '<thead><tr><th>通道</th><th>密钥状态</th></tr></thead><tbody>' +
+        res.providers.map(function (p) {
+          return '<tr><td>' + esc(p.name) + '</td><td>' +
+            (p.configured ? '<span class="badge b-verified">已配置</span>' : '<span class="badge b-muted">未配置</span>') +
+            '</td></tr>';
+        }).join('') + '</tbody>';
+    });
+    if (meta && meta.countries && !$('tCountry').options.length) {
+      $('tCountry').innerHTML = meta.countries.map(function (c) {
+        return '<option value="' + c.iso2 + '">' + esc(c.name) + ' (+' + c.dial + ')</option>';
+      }).join('');
+    }
+  }
+
+  $('doTest').addEventListener('click', function () {
+    $('testMsg').className = 'msg';
+    $('testMsg').textContent = '发送中…';
+    api('/admin/api/test-send', {
+      method: 'POST',
+      body: { country: $('tCountry').value, national: $('tPhone').value },
+    }).then(function (res) {
+      var ok = res.ok;
+      $('testMsg').className = 'msg ' + (ok ? 'ok' : 'err');
+      $('testMsg').textContent = ok
+        ? '发送成功（通道：' + res.provider + '）'
+        : '失败：' + (res.error || '未知错误') + '　' + JSON.stringify(res.tried || []);
+    });
+  });
+
+  /* ── 启动 ── */
+  function boot() {
+    api('/admin/api/meta').then(function (res) {
+      if (res && res.ok) meta = res;
+      if (meta && meta.countries) {
+        $('tCountry').innerHTML = meta.countries.map(function (c) {
+          return '<option value="' + c.iso2 + '">' + esc(c.name) + ' (+' + c.dial + ')</option>';
+        }).join('');
+      }
+    });
+    api('/admin/api/providers').then(function (res) { if (res.ok) $('mockFlag').hidden = !res.mockMode; });
+    loadStats();
+  }
+
+  api('/admin/api/session').then(function (res) {
+    if (res && res.authed) { showApp(); boot(); } else { showLogin(); }
+  }).catch(showLogin);
+})();
+</script>
+</body>
+</html>

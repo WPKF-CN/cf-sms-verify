@@ -1,0 +1,638 @@
+/*!
+ * SMS Verify Widget — 手机号验证弹窗
+ *
+ * 用法（落地页只需三行）：
+ *   <script>window.SMS_VERIFY_CONFIG = { apiBase: 'https://xxx.workers.dev', site: 'ai-lander' };</script>
+ *   <script src="https://xxx.workers.dev/w.js" async></script>
+ *
+ * 脚本会自动接管页面里的 gotolink(urls)：
+ *   点击 → 弹窗 → 人机检测 → 发验证码 → 校验通过 → 跳转 WhatsApp
+ * 已通过验证的用户在有效期内再次点击，直接跳转（不弹窗）。
+ */
+(function () {
+  'use strict';
+
+  var CFG = window.SMS_VERIFY_CONFIG || {};
+  var API = (CFG.apiBase || '').replace(/\/+$/, '');
+  var SITE = CFG.site || 'default';
+  var STORE_KEY = CFG.storageKey || 'smsverify_grant';
+  var FAIL_OPEN = CFG.failOpen !== false; // 接口异常时是否放行（默认放行，避免丢转化）
+  var Z = 2147483000;
+
+  var state = {
+    remote: null,
+    urls: null,
+    step: 'phone',
+    id: null,
+    phone: null,
+    tsToken: null,
+    tsWidgetId: null,
+    resendTimer: null,
+    busy: false,
+    mounted: false,
+  };
+
+  var el = {};
+
+  /* ───────────── 工具 ───────────── */
+
+  function text(key, vars) {
+    var t = (state.remote && state.remote.texts) || CFG.texts || {};
+    var s = t[key] || FALLBACK[key] || key;
+    if (vars) Object.keys(vars).forEach(function (k) { s = s.replace('{' + k + '}', vars[k]); });
+    return s;
+  }
+
+  var FALLBACK = {
+    title: 'Verify your phone',
+    subtitle: 'Confirm your number to join the group',
+    phoneLabel: 'Phone number',
+    sendBtn: 'Send code',
+    codeLabel: 'Enter the 6-digit code',
+    verifyBtn: 'Verify & continue',
+    resend: 'Resend code',
+    resendIn: 'Resend in {s}s',
+    back: 'Change number',
+    securityNote: 'We only use your number to verify you. No spam.',
+    sending: 'Sending…',
+    verifying: 'Verifying…',
+    success: 'Verified! Redirecting…',
+    errorGeneric: 'Something went wrong. Please try again.',
+    errorPhone: 'Please enter a valid phone number.',
+    errorCountry: 'This country is not supported.',
+    errorCode: 'Incorrect or expired code.',
+    errorRateLimit: 'Too many requests. Please try again later.',
+    errorResend: 'Please wait before requesting a new code.',
+    errorTurnstile: 'Verification check failed. Please retry.',
+  };
+
+  var ERROR_TEXT = {
+    PHONE_REQUIRED: 'errorPhone',
+    PHONE_INVALID: 'errorPhone',
+    COUNTRY_REQUIRED: 'errorCountry',
+    COUNTRY_NOT_ALLOWED: 'errorCountry',
+    NO_COUNTRY_CONFIGURED: 'errorGeneric',
+    RESEND_TOO_SOON: 'errorResend',
+    PHONE_DAILY_LIMIT: 'errorRateLimit',
+    IP_HOURLY_LIMIT: 'errorRateLimit',
+    GLOBAL_LIMIT: 'errorRateLimit',
+    TOO_MANY_ATTEMPTS: 'errorRateLimit',
+    TURNSTILE_FAILED: 'errorTurnstile',
+    CODE_INCORRECT: 'errorCode',
+    CODE_EXPIRED: 'errorCode',
+    SEND_FAILED: 'errorGeneric',
+  };
+
+  function emit(name, detail) {
+    try {
+      window.dispatchEvent(new CustomEvent(name, { detail: detail }));
+      if (typeof CFG.onEvent === 'function') CFG.onEvent(name, detail);
+    } catch (e) { /* ignore */ }
+  }
+
+  function post(path, body) {
+    return fetch(API + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; });
+    });
+  }
+
+  function grant() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { return null; }
+  }
+
+  function saveGrant(data) {
+    if (!data || !data.token) return;
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        token: data.token,
+        exp: data.expiresAt || null,
+        phone: data.phone || null,
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  /** 与页面原有 gotolink 一致的链接选择逻辑（优先复用页面的 localStorage 缓存） */
+  function resolveUrl() {
+    var urls = state.urls || [];
+    if (!urls.length) return null;
+    var key = 'link1';
+    var cached = null;
+    try {
+      if (typeof window.getLocalStorageWithExpiry === 'function') {
+        cached = window.getLocalStorageWithExpiry(key);
+      } else {
+        var raw = JSON.parse(localStorage.getItem(key) || 'null');
+        if (raw && raw.expiry > Date.now()) cached = raw.value;
+      }
+    } catch (e) { /* ignore */ }
+    if (cached) return cached;
+
+    var pick = urls[Math.floor(Math.random() * urls.length)];
+    try {
+      var ttlSeconds = typeof window.expTime === 'number' ? window.expTime : 0;
+      var ttl = ttlSeconds > 0 ? ttlSeconds * 1000 : 60 * 1000; // 页面未设置有效期时按 1 分钟缓存
+      if (typeof window.setLocalStorageWithExpiry === 'function') {
+        window.setLocalStorageWithExpiry(key, pick, ttl);
+      } else {
+        localStorage.setItem(key, JSON.stringify({ value: pick, expiry: Date.now() + ttl }));
+      }
+    } catch (e) { /* ignore */ }
+    return pick;
+  }
+
+  /* ───────────── 样式（light DOM + 强隔离，避免被落地页 CSS 影响）───────────── */
+
+  function injectStyles() {
+    if (document.getElementById('sv-styles')) return;
+    var accent = (state.remote && state.remote.accentColor) || CFG.accentColor || '#30a05c';
+    var css =
+      '#sv-root{all:initial;position:fixed;inset:0;z-index:' + Z + ';display:none;}' +
+      '#sv-root.sv-on{display:block;}' +
+      '#sv-root *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}' +
+      '#sv-root .sv-mask{position:absolute;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;}' +
+      '#sv-root .sv-card{position:relative;width:100%;max-width:390px;max-height:92vh;overflow-y:auto;background:#15181d;color:#f5f7fa;border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:26px 22px 22px;box-shadow:0 24px 60px rgba(0,0,0,.55);animation:sv-in .18s ease-out;}' +
+      '@keyframes sv-in{from{opacity:0;transform:translateY(10px) scale(.98);}to{opacity:1;transform:none;}}' +
+      '#sv-root .sv-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border:0;border-radius:8px;background:rgba(255,255,255,.07);color:#9aa4b2;font-size:18px;line-height:1;cursor:pointer;}' +
+      '#sv-root .sv-close:hover{background:rgba(255,255,255,.13);color:#fff;}' +
+      '#sv-root h3{margin:0 0 6px;font-size:19px;font-weight:700;color:#fff;letter-spacing:-.01em;}' +
+      '#sv-root .sv-sub{margin:0 0 18px;font-size:13.5px;line-height:1.5;color:#98a2b3;}' +
+      '#sv-root label{display:block;font-size:12px;font-weight:600;color:#98a2b3;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em;}' +
+      '#sv-root .sv-row{display:flex;gap:8px;}' +
+      '#sv-root select,#sv-root input{width:100%;height:46px;padding:0 12px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:#0e1116;color:#fff;font-size:15px;outline:none;}' +
+      '#sv-root select{flex:0 0 118px;cursor:pointer;}' +
+      '#sv-root input:focus,#sv-root select:focus{border-color:' + accent + ';box-shadow:0 0 0 3px ' + hexA(accent, .18) + ';}' +
+      '#sv-root input.sv-code{text-align:center;letter-spacing:.5em;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;padding-left:calc(12px + .5em);}' +
+      '#sv-root .sv-btn{width:100%;height:48px;margin-top:14px;border:0;border-radius:11px;background:' + accent + ';color:#fff;font-size:15.5px;font-weight:700;cursor:pointer;transition:filter .15s;}' +
+      '#sv-root .sv-btn:hover{filter:brightness(1.08);}' +
+      '#sv-root .sv-btn:disabled{opacity:.6;cursor:default;}' +
+      '#sv-root .sv-link{display:block;width:100%;margin-top:12px;background:none;border:0;color:#98a2b3;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}' +
+      '#sv-root .sv-link:disabled{opacity:.55;cursor:default;text-decoration:none;}' +
+      '#sv-root .sv-err{display:none;margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(240,68,56,.13);border:1px solid rgba(240,68,56,.35);color:#ff9b93;font-size:13px;line-height:1.45;}' +
+      '#sv-root .sv-err.sv-show{display:block;}' +
+      '#sv-root .sv-note{margin-top:16px;font-size:11.5px;line-height:1.5;color:#6b7280;text-align:center;}' +
+      '#sv-root .sv-ts{margin-top:12px;min-height:0;display:flex;justify-content:center;}' +
+      '#sv-root .sv-ok{text-align:center;padding:14px 0 6px;}' +
+      '#sv-root .sv-check{width:60px;height:60px;margin:0 auto 14px;border-radius:50%;background:' + hexA(accent, .16) + ';border:2px solid ' + accent + ';color:' + accent + ';font-size:30px;line-height:56px;font-weight:700;}' +
+      '#sv-root .sv-hide{display:none !important;}' +
+      '#sv-root .sv-spin{display:inline-block;width:15px;height:15px;margin-right:8px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sv-sp .7s linear infinite;vertical-align:-2px;}' +
+      '@keyframes sv-sp{to{transform:rotate(360deg);}}';
+    var style = document.createElement('style');
+    style.id = 'sv-styles';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  function hexA(hex, alpha) {
+    var h = String(hex || '#30a05c').replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
+  }
+
+  /* ───────────── 弹窗结构 ───────────── */
+
+  function mount() {
+    if (state.mounted) return;
+    injectStyles();
+
+    var root = document.createElement('div');
+    root.id = 'sv-root';
+    root.innerHTML =
+      '<div class="sv-mask">' +
+        '<div class="sv-card" role="dialog" aria-modal="true">' +
+          '<button class="sv-close" type="button" aria-label="Close">×</button>' +
+          '<div class="sv-body-phone">' +
+            '<h3></h3><p class="sv-sub"></p>' +
+            '<label class="sv-lbl-phone"></label>' +
+            '<div class="sv-row">' +
+              '<select class="sv-country" aria-label="Country"></select>' +
+              '<input class="sv-phone" type="tel" inputmode="tel" autocomplete="tel" />' +
+            '</div>' +
+            '<div class="sv-ts"></div>' +
+            '<button class="sv-btn sv-send" type="button"></button>' +
+            '<div class="sv-err sv-err-phone"></div>' +
+            '<div class="sv-note sv-note-phone"></div>' +
+          '</div>' +
+          '<div class="sv-body-code sv-hide">' +
+            '<h3 class="sv-code-title"></h3><p class="sv-sub sv-code-sub"></p>' +
+            '<label class="sv-lbl-code"></label>' +
+            '<input class="sv-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />' +
+            '<button class="sv-btn sv-verify" type="button"></button>' +
+            '<button class="sv-link sv-resend" type="button"></button>' +
+            '<button class="sv-link sv-back" type="button"></button>' +
+            '<div class="sv-err sv-err-code"></div>' +
+          '</div>' +
+          '<div class="sv-body-ok sv-hide">' +
+            '<div class="sv-ok"><div class="sv-check">✓</div><h3 class="sv-ok-title"></h3><p class="sv-sub sv-ok-sub"></p></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(root);
+
+    el.root = root;
+    el.mask = root.querySelector('.sv-mask');
+    el.card = root.querySelector('.sv-card');
+    el.phoneBody = root.querySelector('.sv-body-phone');
+    el.codeBody = root.querySelector('.sv-body-code');
+    el.okBody = root.querySelector('.sv-body-ok');
+    el.title = root.querySelector('.sv-body-phone h3');
+    el.sub = root.querySelector('.sv-body-phone .sv-sub');
+    el.lblPhone = root.querySelector('.sv-lbl-phone');
+    el.country = root.querySelector('.sv-country');
+    el.phone = root.querySelector('.sv-phone');
+    el.tsBox = root.querySelector('.sv-ts');
+    el.send = root.querySelector('.sv-send');
+    el.errPhone = root.querySelector('.sv-err-phone');
+    el.notePhone = root.querySelector('.sv-note-phone');
+    el.codeTitle = root.querySelector('.sv-code-title');
+    el.codeSub = root.querySelector('.sv-code-sub');
+    el.lblCode = root.querySelector('.sv-lbl-code');
+    el.code = root.querySelector('.sv-code');
+    el.verify = root.querySelector('.sv-verify');
+    el.resend = root.querySelector('.sv-resend');
+    el.back = root.querySelector('.sv-back');
+    el.errCode = root.querySelector('.sv-err-code');
+    el.okTitle = root.querySelector('.sv-ok-title');
+    el.okSub = root.querySelector('.sv-ok-sub');
+
+    root.querySelector('.sv-close').addEventListener('click', close);
+    el.mask.addEventListener('click', function (e) { if (e.target === el.mask) close(); });
+    el.send.addEventListener('click', onSend);
+    el.verify.addEventListener('click', onVerify);
+    el.resend.addEventListener('click', onResend);
+    el.back.addEventListener('click', function () { showStep('phone'); });
+    el.phone.addEventListener('keydown', function (e) { if (e.key === 'Enter') onSend(); });
+    el.code.addEventListener('keydown', function (e) { if (e.key === 'Enter') onVerify(); });
+    el.code.addEventListener('input', function () {
+      el.code.value = el.code.value.replace(/\D/g, '').slice(0, 6);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && root.classList.contains('sv-on')) close();
+    });
+
+    state.mounted = true;
+  }
+
+  function applyTexts() {
+    el.title.textContent = text('title');
+    el.sub.textContent = text('subtitle');
+    el.lblPhone.textContent = text('phoneLabel');
+    el.send.textContent = text('sendBtn');
+    el.lblCode.textContent = text('codeLabel');
+    el.verify.textContent = text('verifyBtn');
+    el.codeTitle.textContent = text('title');
+    el.codeSub.textContent = text('subtitle');
+    el.okTitle.textContent = text('success');
+    el.okSub.textContent = text('securityNote');
+    el.notePhone.textContent = text('securityNote');
+    el.back.textContent = text('back');
+  }
+
+  function fillCountries() {
+    var list = (state.remote && state.remote.countries) || [];
+    el.country.innerHTML = '';
+    list.forEach(function (c) {
+      var opt = document.createElement('option');
+      opt.value = c.iso2;
+      opt.textContent = c.iso2 + ' +' + c.dial;
+      opt.dataset.example = c.example || '';
+      el.country.appendChild(opt);
+    });
+    var preferred = CFG.defaultCountry || (state.remote && state.remote.defaultCountry);
+    if (preferred) el.country.value = preferred;
+    updatePlaceholder();
+  }
+
+  function updatePlaceholder() {
+    var opt = el.country.options[el.country.selectedIndex];
+    el.phone.placeholder = (opt && opt.dataset.example) || 'phone number';
+  }
+
+  function showError(node, msg) {
+    if (!msg) { node.classList.remove('sv-show'); node.textContent = ''; return; }
+    node.textContent = msg;
+    node.classList.add('sv-show');
+  }
+
+  function busy(btn, on, labelBusy, labelIdle) {
+    btn.disabled = on;
+    btn.innerHTML = on ? '<span class="sv-spin"></span>' + labelBusy : labelIdle;
+  }
+
+  /* ───────────── Turnstile ───────────── */
+
+  function loadTurnstile() {
+    return new Promise(function (resolve) {
+      if (window.turnstile) return resolve(true);
+      if (document.getElementById('sv-ts-script')) {
+        var t = setInterval(function () {
+          if (window.turnstile) { clearInterval(t); resolve(true); }
+        }, 120);
+        setTimeout(function () { clearInterval(t); resolve(Boolean(window.turnstile)); }, 8000);
+        return;
+      }
+      var s = document.createElement('script');
+      s.id = 'sv-ts-script';
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      s.async = true;
+      s.onload = function () { resolve(Boolean(window.turnstile)); };
+      s.onerror = function () { resolve(false); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function renderTurnstile() {
+    var rc = state.remote;
+    if (!rc || !rc.turnstileEnabled || !rc.turnstileSiteKey || !window.turnstile) return;
+    try {
+      if (state.tsWidgetId !== null) window.turnstile.remove(state.tsWidgetId);
+      state.tsToken = null;
+      state.tsWidgetId = window.turnstile.render(el.tsBox, {
+        sitekey: rc.turnstileSiteKey,
+        theme: 'dark',
+        size: 'flexible',
+        callback: function (token) { state.tsToken = token; },
+        'expired-callback': function () { state.tsToken = null; },
+        'error-callback': function () { state.tsToken = null; },
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /* ───────────── 流程 ───────────── */
+
+  function showStep(step) {
+    state.step = step;
+    el.phoneBody.classList.toggle('sv-hide', step !== 'phone');
+    el.codeBody.classList.toggle('sv-hide', step !== 'code');
+    el.okBody.classList.toggle('sv-hide', step !== 'ok');
+    if (step === 'code') setTimeout(function () { el.code.focus(); }, 60);
+    if (step === 'phone') setTimeout(function () { el.phone.focus(); }, 60);
+  }
+
+  function open(urls) {
+    state.urls = urls && urls.length ? urls : null;
+    mount();
+    applyTexts();
+    fillCountries();
+    showError(el.errPhone, '');
+    showError(el.errCode, '');
+    if (!(state.remote && state.remote.countries && state.remote.countries.length)) {
+      showError(el.errPhone, text('errorCountry'));
+    }
+    showStep('phone');
+    el.root.classList.add('sv-on');
+    emit('sms:modal_open', {});
+    setTimeout(function () { el.phone.focus(); }, 80);
+    if (state.remote && state.remote.turnstileEnabled) {
+      loadTurnstile().then(function (ok) { if (ok) renderTurnstile(); });
+    }
+  }
+
+  function close() {
+    if (el.root) el.root.classList.remove('sv-on');
+    if (state.resendTimer) { clearInterval(state.resendTimer); state.resendTimer = null; }
+  }
+
+  /** 点击入口：先看本地凭证，有效则直接跳转（后台异步复核） */
+  function handleClick(urls) {
+    var g = grant();
+    if (!g || !g.token) {
+      ensureReady().then(function (rc) {
+        if (!rc && FAIL_OPEN) { jump(urls); return; } // 接口不可用时放行，避免丢转化
+        open(urls);
+      });
+      return;
+    }
+
+    // 预开窗口以保住浏览器手势，避免被拦截
+    var win = null;
+    try { win = window.open('', '_blank'); } catch (e) { win = null; }
+
+    post('/api/grant', { token: g.token }).then(function (res) {
+      if (res && res.ok && res.valid) {
+        var url = res.redirectUrl || resolveUrlFor(urls);
+        emit('sms:grant_reused', { phone: res.phone });
+        navigate(win, url);
+      } else {
+        if (win) { try { win.close(); } catch (e) { /* ignore */ } }
+        try { localStorage.removeItem(STORE_KEY); } catch (e) { /* ignore */ }
+        ensureReady().then(function (rc) {
+          if (!rc && FAIL_OPEN) { jump(urls); return; }
+          open(urls);
+        });
+      }
+    }).catch(function () {
+      if (FAIL_OPEN) navigate(win, resolveUrlFor(urls));
+      else {
+        if (win) { try { win.close(); } catch (e) { /* ignore */ } }
+        ensureReady().then(function () { open(urls); });
+      }
+    });
+  }
+
+  function resolveUrlFor(urls) {
+    var prev = state.urls;
+    state.urls = urls;
+    var u = resolveUrl();
+    state.urls = prev;
+    return u;
+  }
+
+  function navigate(win, url) {
+    if (!url) { if (win) { try { win.close(); } catch (e) {} } alert('No link available'); return; }
+    if (win && !win.closed) win.location.href = url;
+    else window.location.href = url;
+    emit('sms:redirect', { url: url });
+  }
+
+  function jump(urls) {
+    var url = resolveUrlFor(urls);
+    if (url) window.location.href = url;
+  }
+
+  function ensureReady() {
+    if (state.remote) return Promise.resolve(state.remote);
+    if (state.remoteError) return Promise.resolve(null);
+    return fetch(API + '/api/config')
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        state.remote = (res && res.config) || {};
+        return state.remote;
+      })
+      .catch(function () {
+        state.remoteError = true;
+        if (CFG.fallbackConfig) state.remote = CFG.fallbackConfig;
+        return state.remote || null;
+      });
+  }
+
+  function onSend() {
+    if (state.busy) return;
+    showError(el.errPhone, '');
+
+    var rc = state.remote || {};
+    if (rc.turnstileEnabled && rc.turnstileSiteKey && !state.tsToken) {
+      // 页面刚打开就点的情况：先把 Turnstile 渲染出来
+      loadTurnstile().then(function (ok) {
+        if (ok) renderTurnstile();
+        showError(el.errPhone, text('errorTurnstile'));
+      });
+      return;
+    }
+
+    state.busy = true;
+    busy(el.send, true, text('sending'), text('sendBtn'));
+
+    post('/api/send', {
+      country: el.country.value,
+      national: el.phone.value,
+      turnstileToken: state.tsToken,
+      site: SITE,
+      locale: CFG.locale || 'en',
+    }).then(function (res) {
+      state.busy = false;
+      busy(el.send, false, text('sending'), text('sendBtn'));
+
+      if (res && res.ok) {
+        state.id = res.id;
+        state.phone = res.phone || el.phone.value;
+        showStep('code');
+        el.code.value = '';
+        startResend(res.resendAfter || rc.resendIntervalSec || 60);
+        emit('sms:sent', { id: res.id, provider: res.provider });
+        return;
+      }
+      var key = ERROR_TEXT[res && res.error] || 'errorGeneric';
+      showError(el.errPhone, text(key));
+      if (state.tsWidgetId !== null) { try { window.turnstile.reset(state.tsWidgetId); } catch (e) {} state.tsToken = null; }
+      emit('sms:error', { phase: 'send', error: res && res.error });
+    }).catch(function () {
+      state.busy = false;
+      busy(el.send, false, text('sending'), text('sendBtn'));
+      showError(el.errPhone, text('errorGeneric'));
+      emit('sms:error', { phase: 'send', error: 'network' });
+    });
+  }
+
+  function startResend(seconds) {
+    var left = Number(seconds) || 0;
+    if (state.resendTimer) clearInterval(state.resendTimer);
+    if (left <= 0) { el.resend.disabled = false; el.resend.textContent = text('resend'); return; }
+    el.resend.disabled = true;
+    el.resend.textContent = text('resendIn', { s: left });
+    state.resendTimer = setInterval(function () {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(state.resendTimer);
+        state.resendTimer = null;
+        el.resend.disabled = false;
+        el.resend.textContent = text('resend');
+      } else {
+        el.resend.textContent = text('resendIn', { s: left });
+      }
+    }, 1000);
+  }
+
+  function onResend() {
+    if (state.busy || el.resend.disabled) return;
+    state.busy = true;
+    showError(el.errCode, '');
+    post('/api/send', {
+      country: el.country.value,
+      national: el.phone.value,
+      turnstileToken: state.tsToken,
+      site: SITE,
+      locale: CFG.locale || 'en',
+    }).then(function (res) {
+      state.busy = false;
+      if (res && res.ok) {
+        state.id = res.id;
+        startResend(res.resendAfter || 60);
+        emit('sms:sent', { id: res.id, provider: res.provider, resend: true });
+      } else {
+        var key = ERROR_TEXT[res && res.error] || 'errorGeneric';
+        showError(el.errCode, text(key));
+      }
+    }).catch(function () {
+      state.busy = false;
+      showError(el.errCode, text('errorGeneric'));
+    });
+  }
+
+  function onVerify() {
+    if (state.busy) return;
+    var code = (el.code.value || '').replace(/\D/g, '');
+    if (code.length < 4) { showError(el.errCode, text('errorCode')); return; }
+    showError(el.errCode, '');
+
+    // 预开窗口保住手势
+    var win = null;
+    try { win = window.open('', '_blank'); } catch (e) { win = null; }
+
+    state.busy = true;
+    busy(el.verify, true, text('verifying'), text('verifyBtn'));
+
+    post('/api/check', { id: state.id, code: code }).then(function (res) {
+      state.busy = false;
+      busy(el.verify, false, text('verifying'), text('verifyBtn'));
+
+      if (res && res.ok) {
+        saveGrant({ token: res.token, expiresAt: res.expiresAt, phone: state.phone });
+        showStep('ok');
+        emit('sms:verified', { id: state.id, phone: state.phone });
+        var url = res.redirectUrl || resolveUrlFor(state.urls);
+        if (state.id) post('/api/redirect', { id: state.id });
+        setTimeout(function () { navigate(win, url); }, 550);
+        return;
+      }
+      if (win) { try { win.close(); } catch (e) { /* ignore */ } }
+      var key = ERROR_TEXT[res && res.error] || 'errorCode';
+      showError(el.errCode, text(key));
+      el.code.focus();
+      emit('sms:error', { phase: 'check', error: res && res.error });
+    }).catch(function () {
+      state.busy = false;
+      busy(el.verify, false, text('verifying'), text('verifyBtn'));
+      if (FAIL_OPEN) { navigate(win, resolveUrlFor(state.urls)); return; }
+      if (win) { try { win.close(); } catch (e) { /* ignore */ } }
+      showError(el.errCode, text('errorGeneric'));
+    });
+  }
+
+  /* ───────────── 接管 gotolink ───────────── */
+
+  function installHook() {
+    if (window.__smsVerifyInstalled) return;
+    if (typeof window.gotolink !== 'function') { setTimeout(installHook, 50); return; }
+    window.__smsVerifyInstalled = true;
+    window.__smsVerifyOriginal = window.gotolink;
+    window.gotolink = function (urls) {
+      if (!urls || !urls.length) return window.__smsVerifyOriginal.apply(window, arguments);
+      handleClick(Array.isArray(urls) ? urls : [urls]);
+    };
+  }
+
+  window.SMSVerify = {
+    open: function (urls) { ensureReady().then(function () { open(urls || (window.nbgoto || [])); }); },
+    close: close,
+    reset: function () { try { localStorage.removeItem(STORE_KEY); } catch (e) {} },
+    getGrant: grant,
+  };
+
+  function boot() {
+    // 未配置 apiBase 时完全不接管页面行为，保证引入脚本本身零风险
+    if (!API) return;
+    ensureReady();
+    installHook();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();

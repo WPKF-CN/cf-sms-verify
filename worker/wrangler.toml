@@ -1,0 +1,45 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "sms-verify"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# ─── 非敏感配置（敏感信息用 wrangler secret put 设置，不要写在这里）───
+[vars]
+# 本地演示模式：设为 "1" 时使用 mock 短信通道（不真发短信，验证码固定 123456）
+# 生产环境请删除此行或设为 "0"
+MOCK_MODE = "0"
+
+# ─── D1 数据库（记录 + 配置 + 频控）───
+[[d1_databases]]
+binding = "DB"
+database_name = "sms-verify"
+# 占位值。两种方式会自动覆盖它：
+#   · 用 Deploy to Cloudflare 按钮部署：Cloudflare 自动建库并回填真实 ID
+#   · 命令行部署：执行 `npm run setup`，脚本建库后自动回填
+# 也可以手动执行 `npx wrangler d1 create sms-verify` 后把返回的 ID 填到这里
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# ─── 每日清理任务（可选，部署时取消注释）───
+# [triggers]
+# crons = ["17 4 * * *"]
+
+# ─── 自定义域名（可选，部署时按需取消注释）───
+# [[routes]]
+# pattern = "sms.yourdomain.com"
+# custom_domain = true
+
+# ─── 需要设置的 Secrets（wrangler secret put 名称）───
+# ADMIN_PASSWORD_HASH  后台登录密码的 SHA-256 哈希（hex）
+# SESSION_SECRET       后台会话签名密钥（随便一串长随机字符）
+# TURNSTILE_SECRET     Cloudflare Turnstile Secret Key
+# TWILIO_ACCOUNT_SID   Twilio 账号 SID
+# TWILIO_AUTH_TOKEN    Twilio 认证令牌
+# TWILIO_VERIFY_SERVICE_SID  Twilio Verify Service SID（VA 开头）
+# PLIVO_AUTH_ID        Plivo Auth ID
+# PLIVO_AUTH_TOKEN     Plivo Auth Token
+# PLIVO_APP_UUID       Plivo Verify Application UUID
+
+[[rules]]
+type = "Text"
+globs = ["src/client/widget.txt", "src/admin/admin.html", "src/client/demo.html"]
+fallthrough = true
