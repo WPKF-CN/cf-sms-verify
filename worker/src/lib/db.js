@@ -150,7 +150,7 @@ export async function markRedirect(env, id) {
 export async function findGrant(env, token) {
   if (!token || typeof token !== 'string' || token.length < 16) return null;
   const row = await env.DB.prepare(
-    `SELECT id, phone, country, grant_expires_at
+    `SELECT id, site, phone, country, grant_expires_at, link_id, link_url
        FROM verifications
       WHERE grant_token = ? AND status = 'verified'
         AND grant_expires_at > datetime('now')
@@ -198,7 +198,7 @@ export async function listVerifications(env, { page = 1, pageSize = 20, phone, s
     env.DB.prepare(
       `SELECT id, created_at, updated_at, site, phone, country, provider, provider_ref,
               send_status, send_error, status, attempts, ip, ua, origin,
-              grant_expires_at, verified_at, redirect_at
+              grant_expires_at, verified_at, redirect_at, link_id, link_url
          FROM verifications ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
     )
       .bind(...params, size, offset)

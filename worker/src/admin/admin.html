@@ -308,6 +308,7 @@
 
       <div class="grp">落地页</div>
       <button data-tab="links"><span class="ico">↗</span>跳转与站点</button>
+      <button data-tab="pool"><span class="ico">⛓</span>链接池</button>
       <button data-tab="texts"><span class="ico">✎</span>弹窗文案</button>
 
       <div class="grp">系统</div>
@@ -541,18 +542,43 @@
         <div class="card">
           <h3>跳转目标</h3>
           <p class="sub">
-            <b>client</b>：链接留在落地页里，验证通过后由页面跳转（最简单，推荐）。
-            <b>server</b>：验证通过后由服务端下发链接，源码里看不到真实链接（更安全）。
+            <b>client</b>：链接留在落地页里，验证通过后由页面自己跳转（最简单）。
+            <b>server</b>：验证通过后由后台下发链接，页面源码里看不到真实链接（更安全，配合下面的链接池用）。
           </p>
-          <label class="f"><span>链接模式</span>
-            <select id="cfgLinkMode">
-              <option value="client">client（链接留在落地页）</option>
-              <option value="server">server（验证通过后下发）</option>
-            </select>
-          </label>
-          <label class="f"><span>WhatsApp 链接池（每行一条，server 模式使用；会随机选一条）</span>
-            <textarea id="cfgLinks" placeholder="https://chat.whatsapp.com/xxxx"></textarea>
-          </label>
+          <div class="row">
+            <label class="f" style="margin:0;min-width:240px"><span>链接模式</span>
+              <select id="cfgLinkMode">
+                <option value="client">client（链接留在落地页）</option>
+                <option value="server">server（验证通过后下发）</option>
+              </select>
+            </label>
+            <label class="f" style="margin:0;min-width:240px"><span>轮询策略（server 模式生效）</span>
+              <select id="cfgLinkStrategy">
+                <option value="weighted">加权随机（推荐）</option>
+                <option value="random">纯随机</option>
+                <option value="least">最闲优先（按权重折算）</option>
+              </select>
+            </label>
+          </div>
+          <div class="hint" id="linkModeHint"></div>
+        </div>
+
+        <div class="card">
+          <h3>后台链接池</h3>
+          <p class="sub">
+            按站点分别管理 WhatsApp 链接：单独开关、权重、每 24 小时分配上限，并统计每条链接分发和跳转了多少次。
+          </p>
+          <div class="row" style="align-items:center">
+            <span class="pill" id="poolSummary">读取中…</span>
+            <button class="btn sm" id="gotoPool">打开链接池管理</button>
+          </div>
+          <details style="margin-top:14px">
+            <summary class="tiny muted" style="cursor:pointer">旧版链接池（兼容用：只在链接池一条都没建时生效）</summary>
+            <label class="f" style="margin-top:10px"><span>每行一条</span>
+              <textarea id="cfgLinks" placeholder="https://chat.whatsapp.com/xxxx"></textarea>
+            </label>
+            <div class="hint">后台链接池里建过任何一条链接之后，这里就不再参与分配，可以直接清空。</div>
+          </details>
         </div>
 
         <div class="card">
@@ -577,6 +603,83 @@
               <input id="cfgAccentText" placeholder="#16a34a" />
             </label>
           </div>
+        </div>
+      </section>
+
+      <!-- ─── 链接池 ─── -->
+      <section id="tab-pool">
+        <div class="card">
+          <h3>链接池</h3>
+          <p class="sub">
+            分配顺序：<b>站点专属池 → 通用池</b>。两个池都没得发（没配 / 全停用 / 到上限）时，
+            自动回落到落地页自带的 WhatsApp 链接，不会丢转化。
+          </p>
+          <div class="row" style="align-items:center">
+            <span class="pill" id="poolModeChip">模式：-</span>
+            <span class="pill" id="poolStrategyChip">策略：-</span>
+            <span style="flex:1"></span>
+            <label class="f" style="margin:0"><span>只看某个站点</span>
+              <select id="poolFilter" style="width:190px"></select>
+            </label>
+            <button class="btn ghost sm" id="poolReload" style="margin-bottom:14px">刷新</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 id="linkFormTitle">新增链接</h3>
+          <div class="grid">
+            <label class="f"><span>归属</span>
+              <select id="linkSite"></select>
+              <input id="linkSiteCustom" placeholder="新站点标识，例：ai-lander" style="margin-top:8px" hidden />
+            </label>
+            <label class="f" style="grid-column:span 2"><span>WhatsApp 链接</span>
+              <input id="linkUrl" placeholder="https://chat.whatsapp.com/xxxx" autocomplete="off" />
+            </label>
+            <label class="f"><span>备注名（可选）</span>
+              <input id="linkLabel" placeholder="A 群 / 客服 1" autocomplete="off" />
+            </label>
+            <label class="f"><span>权重（越大分得越多）</span>
+              <input id="linkWeight" type="number" min="1" max="1000" value="1" />
+            </label>
+            <label class="f"><span>每 24 小时上限（0 = 不限）</span>
+              <input id="linkCap" type="number" min="0" value="0" />
+            </label>
+          </div>
+          <label class="switch" style="margin:2px 0 12px">
+            <input type="checkbox" id="linkEnabled" checked />
+            <span class="track"></span>
+            <span>启用中</span>
+          </label>
+          <div class="row" style="align-items:center">
+            <button class="btn" id="linkSave">保存</button>
+            <button class="btn ghost" id="linkCancel" hidden>取消编辑</button>
+            <span class="msg" id="linkMsg"></span>
+          </div>
+          <div class="hint" id="linkSiteHint"></div>
+        </div>
+
+        <div class="card">
+          <h3>链接列表</h3>
+          <div class="scroll"><table id="linkTable"></table></div>
+          <details style="margin-top:14px">
+            <summary class="tiny muted" style="cursor:pointer">批量导入（一行一条，自动跳过重复）</summary>
+            <div class="row" style="margin-top:10px">
+              <label class="f" style="margin:0"><span>导入到</span>
+                <select id="impSite" style="width:170px"></select>
+              </label>
+              <label class="f" style="margin:0"><span>备注前缀（可选）</span>
+                <input id="impLabel" placeholder="B 群" style="width:150px" />
+              </label>
+              <label class="f" style="margin:0"><span>权重</span>
+                <input id="impWeight" type="number" min="1" value="1" style="width:90px" />
+              </label>
+            </div>
+            <textarea id="impText" placeholder="https://chat.whatsapp.com/aaaa&#10;https://chat.whatsapp.com/bbbb" style="min-height:110px;margin-top:10px"></textarea>
+            <div class="row" style="margin-top:8px;align-items:center">
+              <button class="btn sm" id="impGo">开始导入</button>
+              <span class="msg" id="impMsg"></span>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -731,6 +834,7 @@
     captcha: ['人机检测', '在发短信前拦截机器人，避免被刷短信费'],
     limits: ['国家与频控', '只允许指定国家的号码，并限制发送频率'],
     links: ['跳转与站点', '验证通过后跳去哪里，以及允许哪些站点调用'],
+    pool: ['链接池', '按站点管理 WhatsApp 链接：开关、权重、分配上限与统计'],
     texts: ['弹窗文案', '落地页上验证弹窗显示的文字'],
     account: ['我的账号', '修改后台密码、查看管理员'],
   };
@@ -754,7 +858,9 @@
     if (tab === 'overview') loadStats();
     if (tab === 'records') loadRecords();
     if (tab === 'provider') { loadConfig(); loadProviders(); }
-    if (tab === 'captcha' || tab === 'limits' || tab === 'links' || tab === 'texts') loadConfig();
+    if (tab === 'links') { loadConfig(); loadPoolSummary(); }
+    if (tab === 'pool') loadPool();
+    if (tab === 'captcha' || tab === 'limits' || tab === 'texts') loadConfig();
     if (tab === 'account') loadAccount();
   }
 
@@ -823,7 +929,7 @@
       if (!res.ok) return;
       total = res.total;
       $('records').innerHTML =
-        '<thead><tr><th>时间(UTC)</th><th>站点</th><th>手机号</th><th>国家</th><th>通道</th><th>发送</th><th>状态</th><th>试错</th><th>跳转</th><th>IP</th></tr></thead><tbody>' +
+        '<thead><tr><th>时间(UTC)</th><th>站点</th><th>手机号</th><th>国家</th><th>通道</th><th>发送</th><th>状态</th><th>试错</th><th>链接</th><th>跳转</th><th>IP</th></tr></thead><tbody>' +
         (res.rows.length ? res.rows.map(function (r) {
           return '<tr>' +
             '<td class="tiny">' + esc(r.created_at) + '</td>' +
@@ -834,10 +940,14 @@
             '<td>' + (r.send_status === 'sent' ? '<span class="badge b-verified">sent</span>' : '<span class="badge b-failed">' + esc(r.send_status) + '</span>') + '</td>' +
             '<td>' + statusBadge(r.status) + '</td>' +
             '<td>' + esc(r.attempts) + '</td>' +
+            '<td class="tiny" style="max-width:210px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.link_url || '落地页自带链接') + '">' +
+              (r.link_url
+                ? esc(String(r.link_url).replace(/^https?:\/\//, ''))
+                : '<span class="muted">落地页自带</span>') + '</td>' +
             '<td class="tiny">' + esc(r.redirect_at || '-') + '</td>' +
             '<td class="tiny muted">' + esc(r.ip || '-') + '</td>' +
           '</tr>';
-        }).join('') : '<tr><td colspan="10" class="muted">暂无记录</td></tr>') + '</tbody>';
+        }).join('') : '<tr><td colspan="11" class="muted">暂无记录</td></tr>') + '</tbody>';
       var pages = Math.max(1, Math.ceil(total / pageSize));
       $('pageInfo').textContent = '第 ' + page + ' / ' + pages + ' 页，共 ' + total + ' 条';
       $('prevPage').disabled = page <= 1;
@@ -896,6 +1006,8 @@
       $('cfgTsEnabledBox').checked = Boolean(config.turnstileEnabled);
       $('cfgTsKey').value = config.turnstileSiteKey || '';
       $('cfgLinkMode').value = config.linkMode;
+      $('cfgLinkStrategy').value = config.linkStrategy || 'weighted';
+      updateLinkModeHint();
       $('cfgAccent').value = config.accentColor || '#30a05c';
       $('cfgAccentText').value = $('cfgAccent').value;
       $('cfgLinks').value = (config.whatsappLinks || []).join('\n');
@@ -1017,6 +1129,7 @@
       turnstileEnabled: $('cfgTsEnabledBox').checked,
       turnstileSiteKey: $('cfgTsKey').value.trim(),
       linkMode: $('cfgLinkMode').value,
+      linkStrategy: $('cfgLinkStrategy').value,
       accentColor: hexColor($('cfgAccentText').value) || $('cfgAccent').value,
       whatsappLinks: $('cfgLinks').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
       allowedOrigins: $('cfgOrigins').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
@@ -1170,6 +1283,289 @@
         }
       });
   });
+
+  /* ══════════ 链接池 ══════════ */
+  var pool = { links: [], sites: [], editingId: null, filter: '' };
+
+  function siteLabel(site) { return site === '*' ? '通用池' : site; }
+
+  function updateLinkModeHint() {
+    var server = $('cfgLinkMode').value === 'server';
+    $('linkModeHint').innerHTML = server
+      ? '现在是 <b>server</b> 模式：验证通过后由后台从「链接池」挑一条下发；池子没得发时，自动回落到落地页自带的链接。'
+      : '现在是 <b>client</b> 模式：一直用落地页自带的链接，后台「链接池」不参与分配。想统一管理链接就切成 server。';
+  }
+  $('cfgLinkMode').addEventListener('change', updateLinkModeHint);
+  $('gotoPool').addEventListener('click', function () { goto('pool'); });
+
+  /** 「跳转与站点」页上那行摘要 */
+  function loadPoolSummary() {
+    api('/admin/api/links').then(function (res) {
+      if (!res || !res.ok) { $('poolSummary').textContent = '读取失败'; return; }
+      var shared = res.links.filter(function (l) { return l.site === '*'; }).length;
+      var siteSet = {};
+      res.links.forEach(function (l) { if (l.site !== '*') siteSet[l.site] = 1; });
+      var parts = [];
+      if (res.summary.total) {
+        parts.push('共 ' + res.summary.total + ' 条（启用 ' + res.summary.enabled + '）');
+        parts.push('通用池 ' + shared + ' 条');
+        parts.push(Object.keys(siteSet).length + ' 个站点');
+      } else {
+        parts.push('还没建链接 → 会回落到落地页自带的链接');
+      }
+      if (res.legacyCount) parts.push('旧版兜底 ' + res.legacyCount + ' 条');
+      $('poolSummary').textContent = parts.join(' · ');
+    });
+  }
+
+  var STRATEGY_LABEL = { weighted: '加权随机', random: '纯随机', least: '最闲优先' };
+
+  function loadPool() {
+    api('/admin/api/links').then(function (res) {
+      if (!res || !res.ok) { toast('链接池读取失败', true); return; }
+      pool.links = res.links || [];
+      pool.sites = res.sites || [];
+      $('poolModeChip').textContent = '模式：' + res.linkMode;
+      $('poolStrategyChip').textContent = '策略：' + (STRATEGY_LABEL[res.linkStrategy] || res.linkStrategy);
+      fillSiteSelects();
+      renderLinks();
+    });
+  }
+
+  function siteOptionsHtml(withNew) {
+    var opts = ['<option value="*">通用池（所有站点共享）</option>'];
+    pool.sites.forEach(function (s) {
+      opts.push('<option value="' + esc(s) + '">' + esc(s) + '</option>');
+    });
+    if (withNew) opts.push('<option value="__new">＋ 输入新的站点标识…</option>');
+    return opts.join('');
+  }
+
+  function fillSiteSelects() {
+    var cur = $('linkSite').value;
+    $('linkSite').innerHTML = siteOptionsHtml(true);
+    $('linkSite').value = cur || '*';
+    if ($('linkSite').selectedIndex < 0) $('linkSite').value = '*';
+
+    var curImp = $('impSite').value;
+    $('impSite').innerHTML = siteOptionsHtml(false);
+    if (curImp) $('impSite').value = curImp;
+
+    var f = ['<option value="">全部站点</option>', '<option value="*">通用池</option>']
+      .concat(pool.sites.map(function (s) {
+        return '<option value="' + esc(s) + '">' + esc(s) + '</option>';
+      }));
+    $('poolFilter').innerHTML = f.join('');
+    $('poolFilter').value = pool.filter;
+
+    $('linkSiteHint').innerHTML = pool.sites.length
+      ? '站点标识要跟落地页里 <code>site: \'…\'</code> 写的一致。目前见过的站点：' +
+        pool.sites.map(function (s) { return '<code>' + esc(s) + '</code>'; }).join('、')
+      : '还没有识别到任何站点标识。先在落地页的 <code>SMS_VERIFY_CONFIG</code> 里写上 <code>site: \'ai-lander\'</code>，' +
+        '或者先用「通用池」——通用池的链接所有站点都能分到。';
+  }
+
+  $('poolFilter').addEventListener('change', function () {
+    pool.filter = this.value;
+    renderLinks();
+  });
+  $('poolReload').addEventListener('click', function () { loadPool(); });
+
+  function currentFormSite() {
+    return $('linkSite').value === '__new'
+      ? $('linkSiteCustom').value.trim()
+      : $('linkSite').value;
+  }
+
+  $('linkSite').addEventListener('change', function () {
+    $('linkSiteCustom').hidden = this.value !== '__new';
+    if (!this.hidden) $('linkSiteCustom').focus();
+  });
+
+  function resetLinkForm() {
+    pool.editingId = null;
+    $('linkFormTitle').textContent = '新增链接';
+    $('linkUrl').value = '';
+    $('linkLabel').value = '';
+    $('linkWeight').value = 1;
+    $('linkCap').value = 0;
+    $('linkEnabled').checked = true;
+    $('linkSiteCustom').value = '';
+    $('linkSiteCustom').hidden = true;
+    $('linkSite').value = '*';
+    $('linkCancel').hidden = true;
+    $('linkSave').textContent = '保存';
+    $('linkMsg').textContent = '';
+  }
+
+  function findLink(id) {
+    var found = null;
+    pool.links.forEach(function (l) { if (l.id === id) found = l; });
+    return found;
+  }
+
+  function editLink(id) {
+    var l = findLink(id);
+    if (!l) return;
+    pool.editingId = id;
+    $('linkFormTitle').textContent = '编辑链接 #' + id;
+    $('linkUrl').value = l.url;
+    $('linkLabel').value = l.label || '';
+    $('linkWeight').value = l.weight;
+    $('linkCap').value = l.dailyCap;
+    $('linkEnabled').checked = l.enabled;
+    if (l.site === '*' || pool.sites.indexOf(l.site) >= 0) {
+      $('linkSite').value = l.site;
+      $('linkSiteCustom').hidden = true;
+    } else {
+      $('linkSite').value = '__new';
+      $('linkSiteCustom').value = l.site;
+      $('linkSiteCustom').hidden = false;
+    }
+    $('linkCancel').hidden = false;
+    $('linkSave').textContent = '保存修改';
+    $('linkMsg').textContent = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  $('linkCancel').addEventListener('click', resetLinkForm);
+
+  $('linkSave').addEventListener('click', function () {
+    var url = $('linkUrl').value.trim();
+    var site = currentFormSite();
+    var wasEdit = Boolean(pool.editingId);
+    $('linkMsg').className = 'msg';
+    if (!url) { $('linkMsg').className = 'msg err'; $('linkMsg').textContent = '请填 WhatsApp 链接'; return; }
+    if (!site) { $('linkMsg').className = 'msg err'; $('linkMsg').textContent = '请填站点标识，或选「通用池」'; return; }
+
+    var body = {
+      site: site,
+      url: url,
+      label: $('linkLabel').value.trim(),
+      weight: Number($('linkWeight').value) || 1,
+      dailyCap: Number($('linkCap').value) || 0,
+      enabled: $('linkEnabled').checked,
+    };
+    $('linkSave').disabled = true;
+    var req = wasEdit
+      ? api('/admin/api/links/' + pool.editingId, { method: 'PUT', body: body })
+      : api('/admin/api/links', { method: 'POST', body: body });
+
+    req.then(function (res) {
+      $('linkSave').disabled = false;
+      if (!res || !res.ok) {
+        $('linkMsg').className = 'msg err';
+        $('linkMsg').textContent = (res && res.error) === 'BAD_URL'
+          ? '链接格式不对（需要 http:// 或 https:// 开头）'
+          : '保存失败：' + ((res && res.error) || '未知错误');
+        return;
+      }
+      resetLinkForm();
+      loadPool();
+      toast(wasEdit ? '已保存' : '已新增');
+    }).catch(function () {
+      $('linkSave').disabled = false;
+      $('linkMsg').className = 'msg err';
+      $('linkMsg').textContent = '网络错误，请重试';
+    });
+  });
+
+  function toggleLink(id, on) {
+    api('/admin/api/links/' + id, { method: 'PUT', body: { enabled: on } }).then(function (res) {
+      if (!res || !res.ok) { toast('切换失败', true); loadPool(); return; }
+      toast(on ? '已启用' : '已停用');
+      loadPool();
+    });
+  }
+
+  function removeLink(id) {
+    var l = findLink(id);
+    if (!window.confirm('确定删除这条链接？\n\n' + (l ? l.url : ''))) return;
+    api('/admin/api/links/' + id, { method: 'DELETE' }).then(function () {
+      loadPool();
+      toast('已删除');
+    });
+  }
+
+  function renderLinks() {
+    var rows = pool.links.filter(function (l) {
+      return !pool.filter || l.site === pool.filter;
+    });
+    var head = ['站点', '链接', '备注', '权重', '上限 / 近24h', '累计 / 跳转', '状态', ''];
+    var html = '<thead><tr>' + head.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>';
+    if (!rows.length) {
+      html += '<tr><td colspan="' + head.length + '" class="muted">' +
+        (pool.links.length ? '这个站点还没有链接' : '还没有链接。上面可以新增，或者用「批量导入」。') +
+        '</td></tr>';
+    } else {
+      rows.forEach(function (l) {
+        html += '<tr>' +
+          '<td class="tiny">' + esc(siteLabel(l.site)) + '</td>' +
+          '<td class="tiny" style="max-width:300px;overflow:hidden;text-overflow:ellipsis" title="' + esc(l.url) + '">' +
+            '<a href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">' +
+            esc(l.url.replace(/^https?:\/\//, '')) + '</a></td>' +
+          '<td class="tiny">' + esc(l.label || '-') + '</td>' +
+          '<td class="tiny">' + l.weight + '</td>' +
+          '<td class="tiny">' + (l.dailyCap || '不限') + ' / ' + l.last24h + '</td>' +
+          '<td class="tiny">' + l.total + ' / ' + l.redirected + '</td>' +
+          '<td><label class="switch" title="启用 / 停用"><input type="checkbox" data-toggle="' + l.id + '"' +
+            (l.enabled ? ' checked' : '') + ' /><span class="track"></span></label></td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="btn ghost sm" data-edit="' + l.id + '">编辑</button> ' +
+            '<button class="btn ghost sm" data-del="' + l.id + '">删除</button>' +
+          '</td></tr>';
+      });
+    }
+    $('linkTable').innerHTML = html + '</tbody>';
+
+    [].forEach.call($('linkTable').querySelectorAll('[data-toggle]'), function (el) {
+      el.addEventListener('change', function () { toggleLink(Number(el.dataset.toggle), el.checked); });
+    });
+    [].forEach.call($('linkTable').querySelectorAll('[data-edit]'), function (el) {
+      el.addEventListener('click', function () { editLink(Number(el.dataset.edit)); });
+    });
+    [].forEach.call($('linkTable').querySelectorAll('[data-del]'), function (el) {
+      el.addEventListener('click', function () { removeLink(Number(el.dataset.del)); });
+    });
+  }
+
+  $('impGo').addEventListener('click', function () {
+    var text = $('impText').value;
+    $('impMsg').className = 'msg';
+    if (!text.trim()) {
+      $('impMsg').className = 'msg err';
+      $('impMsg').textContent = '先粘贴链接，一行一条';
+      return;
+    }
+    $('impGo').disabled = true;
+    api('/admin/api/links/import', {
+      method: 'POST',
+      body: {
+        site: $('impSite').value,
+        text: text,
+        label: $('impLabel').value.trim(),
+        weight: Number($('impWeight').value) || 1,
+      },
+    }).then(function (res) {
+      $('impGo').disabled = false;
+      if (!res || !res.ok) {
+        $('impMsg').className = 'msg err';
+        $('impMsg').textContent = '导入失败';
+        return;
+      }
+      $('impText').value = '';
+      $('impMsg').className = 'msg ok';
+      $('impMsg').textContent = '已导入 ' + res.added + ' 条' +
+        (res.skipped ? '，跳过 ' + res.skipped + ' 条（重复或无效）' : '');
+      loadPool();
+    }).catch(function () {
+      $('impGo').disabled = false;
+      $('impMsg').className = 'msg err';
+      $('impMsg').textContent = '网络错误，请重试';
+    });
+  });
+
+  resetLinkForm();
 
   /* ── 启动 ── */
   function boot() {

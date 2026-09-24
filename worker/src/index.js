@@ -18,6 +18,11 @@
  *   GET  /admin/api/records         记录列表（支持筛选 + 分页）
  *   GET  /admin/api/records.csv     导出 CSV
  *   GET/PUT /admin/api/config       读取 / 保存配置
+ *   GET  /admin/api/links           WhatsApp 链接池（含每条链接的分配/跳转统计）
+ *   POST /admin/api/links           新增链接
+ *   POST /admin/api/links/import    批量导入链接（一行一条）
+ *   PUT  /admin/api/links/:id       修改链接（开关 / 权重 / 上限 / 归属站点）
+ *   DELETE /admin/api/links/:id     删除链接
  *   GET/PUT /admin/api/credentials  短信商/Turnstile 凭证（存在 D1，加密）
  *   GET  /admin/api/providers       通道配置状态
  *   POST /admin/api/test-send       测试发送
@@ -71,6 +76,18 @@ import {
   checkLoginLimit,
   cleanup,
 } from './lib/db.js';
+import {
+  LINK_STRATEGIES,
+  listLinks,
+  linkSiteOptions,
+  createLink,
+  updateLink,
+  deleteLink,
+  importLinks,
+  pickLinkForSite,
+  assignLink,
+  getLink,
+} from './lib/links.js';
 import { createSession, sessionCookie, clearCookie, isAuthed } from './lib/auth.js';
 
 const CORS_HEADERS = 'POST, GET, OPTIONS';
@@ -130,10 +147,23 @@ async function readJson(request) {
 }
 
 /** 给前端选择的 WhatsApp 目标链接 */
-function pickLink(cfg) {
-  const links = (cfg.whatsappLinks || []).filter(Boolean);
-  if (!links.length) return null;
-  return links[Math.floor(Math.random() * links.length)];
+/**
+ * 给一次跳转取链接（只在 linkMode=server 时由后台决定）。
+ *
+ * 优先复用这条记录上次分配到的链接——同一个用户尽量一直进同一个群；
+ * 只有那条链接被停用/删掉时才会重新分配，并把新的分配写回记录（链接级统计要用）。
+ * 返回 null 表示后台没有可发的链接，前端会自动回落到落地页自带的链接池。
+ */
+async function resolveRedirect(env, cfg, { site, verificationId, stickyLinkId } = {}) {
+  if (cfg.linkMode !== 'server') return null;
+  if (stickyLinkId) {
+    const row = await getLink(env, stickyLinkId);
+    if (row && Number(row.enabled) === 1) return row.url;
+  }
+  const picked = await pickLinkForSite(env, cfg, site);
+  if (!picked) return null;
+  if (verificationId) await assignLink(env, verificationId, picked);
+  return picked.url;
 }
 
 /* ───────────── 公开接口 ───────────── */
@@ -267,7 +297,11 @@ async function handleCheck(env, request, origin) {
         ok: true,
         token: row.grant_token,
         expiresAt: row.grant_expires_at,
-        redirectUrl: cfg.linkMode === 'server' ? pickLink(cfg) : null,
+        redirectUrl: await resolveRedirect(env, cfg, {
+          site: row.site,
+          verificationId: row.id,
+          stickyLinkId: row.link_id,
+        }),
       },
       200,
       corsOrigin,
@@ -331,7 +365,7 @@ async function handleCheck(env, request, origin) {
       ok: true,
       token,
       expiresAt,
-      redirectUrl: cfg.linkMode === 'server' ? pickLink(cfg) : null,
+      redirectUrl: await resolveRedirect(env, cfg, { site: row.site, verificationId: id }),
     },
     200,
     corsOrigin,
@@ -353,7 +387,11 @@ async function handleGrant(env, request, origin) {
       valid: true,
       phone: maskPhone(row.phone),
       expiresAt: row.grant_expires_at,
-      redirectUrl: cfg.linkMode === 'server' ? pickLink(cfg) : null,
+      redirectUrl: await resolveRedirect(env, cfg, {
+        site: row.site,
+        verificationId: row.id,
+        stickyLinkId: row.link_id,
+      }),
     },
     200,
     corsOrigin,
@@ -441,7 +479,7 @@ async function handleAdminApi(env, request, path, ip) {
     const { rows } = await listVerifications(env, { ...q, pageSize: 200 });
     const cols = [
       'id', 'created_at', 'site', 'phone', 'country', 'provider',
-      'send_status', 'status', 'attempts', 'verified_at', 'redirect_at', 'ip', 'origin',
+      'send_status', 'status', 'attempts', 'verified_at', 'redirect_at', 'link_url', 'ip', 'origin',
     ];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
@@ -519,6 +557,59 @@ async function handleAdminApi(env, request, path, ip) {
       secretKeys: SECRET_KEYS,
       admins: await listAdmins(env),
     });
+  }
+
+  /* ── WhatsApp 链接池 ── */
+
+  if (path === '/admin/api/links' && request.method === 'GET') {
+    const url = new URL(request.url);
+    const site = url.searchParams.get('site') || '';
+    const cfg = await loadConfig(env);
+    const [links, sites] = await Promise.all([listLinks(env, { site }), linkSiteOptions(env)]);
+    return json({
+      ok: true,
+      links,
+      sites,
+      strategies: LINK_STRATEGIES,
+      linkMode: cfg.linkMode,
+      linkStrategy: cfg.linkStrategy,
+      legacyCount: (cfg.whatsappLinks || []).filter(Boolean).length,
+      summary: {
+        total: links.length,
+        enabled: links.filter((l) => l.enabled).length,
+      },
+    });
+  }
+
+  if (path === '/admin/api/links/import' && request.method === 'POST') {
+    const body = await readJson(request);
+    const res = await importLinks(env, {
+      site: body.site,
+      text: body.text,
+      label: body.label,
+      weight: body.weight,
+      dailyCap: body.dailyCap,
+    });
+    return json(res);
+  }
+
+  if (path === '/admin/api/links' && request.method === 'POST') {
+    const body = await readJson(request);
+    const res = await createLink(env, body.link || body);
+    return json({ ok: res.ok, error: res.error, id: res.id }, res.ok ? 200 : 400);
+  }
+
+  if (path.startsWith('/admin/api/links/')) {
+    const id = Number(path.slice('/admin/api/links/'.length));
+    if (!id) return json({ ok: false, error: 'BAD_ID' }, 400);
+    if (request.method === 'DELETE') {
+      return json(await deleteLink(env, id));
+    }
+    if (request.method === 'PUT' || request.method === 'PATCH' || request.method === 'POST') {
+      const body = await readJson(request);
+      const res = await updateLink(env, id, body.link || body);
+      return json({ ok: res.ok, error: res.error }, res.ok ? 200 : 400);
+    }
   }
 
   if (path === '/admin/api/test-send') {

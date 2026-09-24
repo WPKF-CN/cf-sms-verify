@@ -119,7 +119,7 @@ async function main() {
   }
 
   /* 3. 建表 */
-  step(2, '建表（records / config / rate）');
+  step(2, '建表（config / verifications / rate / secrets / admins / links）');
   if (CHECK_ONLY) {
     warn('仅检查模式：跳过建表');
   } else {

@@ -87,7 +87,9 @@ export const DEFAULT_CONFIG = {
 
   /* —— 链接模式：client = 链接留在页面里；server = 验证通过后由 Worker 下发 —— */
   linkMode: 'client',
-  whatsappLinks: [], // linkMode=server 时使用
+  /* 链接轮询策略：weighted = 加权随机 / random = 纯随机 / least = 最闲优先（按权重折算） */
+  linkStrategy: 'weighted',
+  whatsappLinks: [], // 旧版链接池：只在「链接池」里一条都没建时作为兼容兜底使用
 
   /* —— 允许的站点来源；["*"] 表示不限制（建议生产环境填具体域名）—— */
   allowedOrigins: ['*'],
