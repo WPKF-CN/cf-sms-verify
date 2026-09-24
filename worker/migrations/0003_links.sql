@@ -1,6 +1,12 @@
 -- ============================================================
 -- 迁移 0003：后台可管理的 WhatsApp 链接池
 --
+-- 怎么执行（三选一）：
+--   · 命令行：npx wrangler d1 execute <数据库名> --remote --file=./migrations/0003_links.sql
+--   · 部署按钮 / wrangler deploy：会自动执行（predeploy 钩子）
+--   · 纯网页：打开 D1 → Console，把本文件【内容】粘进去点 Execute
+--            （注意是粘内容，不是粘文件名；重复执行报 duplicate column name 属正常）
+--
 -- 背景：
 --   原来 linkMode=server 时只有一个全局的「一行一条」链接数组（config.whatsappLinks），
 --   不分站点、没有开关、没有权重、没有上限，也统计不到「这条链接被发了多少次」。
