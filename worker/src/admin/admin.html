@@ -608,6 +608,19 @@
 
       <!-- ─── 链接池 ─── -->
       <section id="tab-pool">
+        <div class="card" id="poolSchemaWarn" hidden>
+          <h3 style="color:var(--warn)">数据库还没升级</h3>
+          <p class="sub">
+            这个数据库里还没有链接池的表（或者字段没加全），所以链接池暂时存不了东西——
+            <b>不影响线上验证和跳转</b>，验证完会自动用落地页自带的链接。
+          </p>
+          <div class="hint">
+            升级办法：Cloudflare 后台 → <b>D1</b> → 选中你的数据库 → 顶部 <b>Console</b>，
+            把 <code>worker/migrations/0003_links.sql</code> 的 <b>内容</b>（不是文件名）粘进去点 Execute。
+            报 <code>duplicate column name</code> 说明已升级过，忽略即可。
+          </div>
+        </div>
+
         <div class="card">
           <h3>链接池</h3>
           <p class="sub">
@@ -1325,6 +1338,7 @@
       if (!res || !res.ok) { toast('链接池读取失败', true); return; }
       pool.links = res.links || [];
       pool.sites = res.sites || [];
+      $('poolSchemaWarn').hidden = res.schemaReady !== false;
       $('poolModeChip').textContent = '模式：' + res.linkMode;
       $('poolStrategyChip').textContent = '策略：' + (STRATEGY_LABEL[res.linkStrategy] || res.linkStrategy);
       fillSiteSelects();

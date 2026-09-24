@@ -87,6 +87,7 @@ import {
   pickLinkForSite,
   assignLink,
   getLink,
+  linksSchemaReady,
 } from './lib/links.js';
 import { createSession, sessionCookie, clearCookie, isAuthed } from './lib/auth.js';
 
@@ -146,24 +147,30 @@ async function readJson(request) {
   }
 }
 
-/** 给前端选择的 WhatsApp 目标链接 */
 /**
  * 给一次跳转取链接（只在 linkMode=server 时由后台决定）。
  *
  * 优先复用这条记录上次分配到的链接——同一个用户尽量一直进同一个群；
  * 只有那条链接被停用/删掉时才会重新分配，并把新的分配写回记录（链接级统计要用）。
  * 返回 null 表示后台没有可发的链接，前端会自动回落到落地页自带的链接池。
+ *
+ * 整个函数是"绝不添乱"的：链接池任何异常（表没建、字段没加、数据有问题）
+ * 都只是让这里返回 null，把跳转交回落地页，不影响验证主流程。
  */
 async function resolveRedirect(env, cfg, { site, verificationId, stickyLinkId } = {}) {
   if (cfg.linkMode !== 'server') return null;
-  if (stickyLinkId) {
-    const row = await getLink(env, stickyLinkId);
-    if (row && Number(row.enabled) === 1) return row.url;
+  try {
+    if (stickyLinkId) {
+      const row = await getLink(env, stickyLinkId);
+      if (row && Number(row.enabled) === 1) return row.url;
+    }
+    const picked = await pickLinkForSite(env, cfg, site);
+    if (!picked) return null;
+    if (verificationId) await assignLink(env, verificationId, picked);
+    return picked.url;
+  } catch {
+    return null;
   }
-  const picked = await pickLinkForSite(env, cfg, site);
-  if (!picked) return null;
-  if (verificationId) await assignLink(env, verificationId, picked);
-  return picked.url;
 }
 
 /* ───────────── 公开接口 ───────────── */
@@ -565,9 +572,24 @@ async function handleAdminApi(env, request, path, ip) {
     const url = new URL(request.url);
     const site = url.searchParams.get('site') || '';
     const cfg = await loadConfig(env);
+    const schemaReady = await linksSchemaReady(env);
+    if (!schemaReady) {
+      return json({
+        ok: true,
+        schemaReady: false,
+        links: [],
+        sites: await linkSiteOptions(env),
+        strategies: LINK_STRATEGIES,
+        linkMode: cfg.linkMode,
+        linkStrategy: cfg.linkStrategy,
+        legacyCount: (cfg.whatsappLinks || []).filter(Boolean).length,
+        summary: { total: 0, enabled: 0 },
+      });
+    }
     const [links, sites] = await Promise.all([listLinks(env, { site }), linkSiteOptions(env)]);
     return json({
       ok: true,
+      schemaReady: true,
       links,
       sites,
       strategies: LINK_STRATEGIES,

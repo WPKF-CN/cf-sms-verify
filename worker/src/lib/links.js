@@ -225,13 +225,27 @@ export async function pickLinkForSite(env, cfg, site) {
 export async function assignLink(env, verificationId, link) {
   const id = Number(verificationId);
   if (!id) return;
-  await env.DB.prepare(
-    `UPDATE verifications
-        SET link_id = ?, link_url = ?, updated_at = datetime('now')
-      WHERE id = ?`,
-  )
-    .bind(link?.id ?? null, link?.url ?? null, id)
-    .run();
+  try {
+    await env.DB.prepare(
+      `UPDATE verifications
+          SET link_id = ?, link_url = ?, updated_at = datetime('now')
+        WHERE id = ?`,
+    )
+      .bind(link?.id ?? null, link?.url ?? null, id)
+      .run();
+  } catch {
+    // 迁移还没跑（缺 link_id / link_url 列）时忽略：绝不因为统计字段影响跳转
+  }
+}
+
+/** 链接池表是否已建好（用于后台提示"该跑迁移了"） */
+export async function linksSchemaReady(env) {
+  try {
+    await env.DB.prepare('SELECT 1 FROM links LIMIT 1').first();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /* ───────────── 后台增删改 ───────────── */
