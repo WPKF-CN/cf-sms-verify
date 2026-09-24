@@ -4,88 +4,246 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex, nofollow" />
-<title>SMS Verify 控制台</title>
-<style>
+<title>SMS Verify 控制台</title><style>
+  /* ═══════════ 主题变量（默认浅色）═══════════ */
   :root {
-    --bg: #0c0e12; --panel: #14171d; --panel2: #1a1e26; --line: #262c37;
-    --text: #e8ecf3; --muted: #8b95a5; --accent: #4c8dff; --ok: #2ecc71;
-    --warn: #f5a623; --err: #ff5f57;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel2: #f3f4f6;
+    --sidebar: #ffffff;
+    --line: #e3e6ea;
+    --line-strong: #ccd2da;
+    --text: #1f2430;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-soft: #eff4ff;
+    --ok: #15803d;
+    --ok-bg: #e8f6ed;
+    --warn: #b45309;
+    --warn-bg: #fdf3e2;
+    --err: #dc2626;
+    --err-bg: #fdeceb;
+    --code-bg: #f1f3f6;
+    --hover: #f7f8fa;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+    --bar-to: #7ba7f5;
+    color-scheme: light;
   }
+  html[data-theme="dark"] {
+    --bg: #0c0e12;
+    --panel: #14171d;
+    --panel2: #1a1e26;
+    --sidebar: #101319;
+    --line: #262c37;
+    --line-strong: #38414f;
+    --text: #e8ecf3;
+    --muted: #8b95a5;
+    --accent: #4c8dff;
+    --accent-soft: #17233c;
+    --ok: #6ee7a8;
+    --ok-bg: rgba(46,204,113,.13);
+    --warn: #f7c46c;
+    --warn-bg: rgba(245,166,35,.13);
+    --err: #ff9b95;
+    --err-bg: rgba(255,95,87,.13);
+    --code-bg: #0a0c10;
+    --hover: #171b22;
+    --shadow: none;
+    --bar-to: #2c5fb8;
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: background .2s, color .2s;
   }
   a { color: var(--accent); }
-  code { background: #0a0c10; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
-  /* 登录 */
+  code {
+    background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
+    font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* ═══════════ 登录 ═══════════ */
   #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  #login .box { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 26px; }
+  #login .box {
+    width: 100%; max-width: 350px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px; box-shadow: var(--shadow);
+  }
   #login h1 { margin: 0 0 4px; font-size: 18px; }
   #login p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
-  /* 布局 */
-  header {
-    display: flex; align-items: center; gap: 16px; padding: 14px 20px;
-    border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 20;
+
+  /* ═══════════ 主布局：左侧菜单 + 右侧内容 ═══════════ */
+  .layout { display: flex; min-height: 100vh; }
+
+  aside {
+    width: 232px; flex: 0 0 232px; background: var(--sidebar);
+    border-right: 1px solid var(--line); display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
   }
-  header h1 { margin: 0; font-size: 15px; font-weight: 700; }
-  header .sp { flex: 1; }
-  nav { display: flex; gap: 6px; padding: 14px 20px 0; flex-wrap: wrap; }
-  nav button {
-    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
-    padding: 7px 14px; border-radius: 9px; cursor: pointer; font-size: 13.5px;
+  .brand {
+    display: flex; align-items: center; gap: 9px; padding: 18px 18px 14px;
+    font-weight: 700; font-size: 14.5px; letter-spacing: -.01em;
   }
-  nav button.on { background: var(--panel2); color: var(--text); border-color: #38414f; }
-  main { padding: 16px 20px 60px; max-width: 1280px; }
+  .brand .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 0 3px var(--ok-bg); flex: 0 0 auto;
+  }
+  .menu { flex: 1; overflow-y: auto; padding: 4px 10px 14px; }
+  .menu .grp {
+    color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .05em;
+    text-transform: uppercase; padding: 14px 8px 6px;
+  }
+  .menu button {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: none; border: 0; color: var(--text); padding: 8px 10px;
+    border-radius: 8px; cursor: pointer; font-size: 13.5px; margin-bottom: 1px;
+  }
+  .menu button:hover { background: var(--hover); }
+  .menu button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .menu button .ico { width: 16px; text-align: center; opacity: .85; font-size: 14px; }
+  aside .foot { padding: 12px 14px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+  aside .who { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icon-btn {
+    background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  }
+  .icon-btn:hover { border-color: var(--line-strong); }
+
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; gap: 12px; padding: 14px 24px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 15;
+  }
+  .topbar h2 { margin: 0; font-size: 16px; font-weight: 700; }
+  .topbar .desc { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .topbar .sp { flex: 1; }
+  main { padding: 20px 24px 80px; max-width: 1180px; width: 100%; }
   section { display: none; }
-  section.on { display: block; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-  .card h2 { margin: 0 0 12px; font-size: 14px; font-weight: 700; }
-  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  .kpi { background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; padding: 13px 14px; }
-  .kpi .n { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
-  .kpi .l { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
-  tbody tr:hover { background: #171b22; }
-  .scroll { overflow-x: auto; }
-  input, select, textarea, button {
-    font-family: inherit; font-size: 13.5px; color: var(--text);
-    background: #0e1116; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none;
+  section.on { display: block; animation: fade .16s ease-out; }
+  @keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+  /* ═══════════ 组件 ═══════════ */
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow);
   }
-  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
-  input[type=color] { padding: 2px; height: 36px; width: 60px; }
+  .card h3 { margin: 0 0 4px; font-size: 14.5px; font-weight: 700; }
+  .card .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; line-height: 1.55; }
+  .card.warn-card { border-left: 3px solid var(--warn); }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .kpi { background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; padding: 14px; }
+  .kpi .n { font-size: 25px; font-weight: 700; letter-spacing: -.02em; }
+  .kpi .l { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+  tbody tr:hover { background: var(--hover); }
+  tbody tr:last-child td { border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  input, select, textarea {
+    font-family: inherit; font-size: 13.5px; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input[type=color] { padding: 2px; height: 38px; width: 64px; }
   textarea { width: 100%; min-height: 84px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-  label.f { display: block; margin-bottom: 12px; }
-  label.f > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
-  .btn { background: var(--accent); border: 0; color: #fff; font-weight: 600; padding: 9px 16px; border-radius: 8px; cursor: pointer; }
-  .btn:hover { filter: brightness(1.08); }
-  .btn.ghost { background: var(--panel2); border: 1px solid var(--line); color: var(--text); }
+  label.f { display: block; margin-bottom: 14px; }
+  label.f > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; font-weight: 500; }
+  label.f input, label.f select { width: 100%; }
+  .btn {
+    background: var(--accent); border: 0; color: #fff; font-weight: 600;
+    padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 13.5px;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn.ghost { background: var(--panel); border: 1px solid var(--line-strong); color: var(--text); }
+  .btn.ghost:hover { background: var(--hover); filter: none; }
+  .btn.sm { padding: 6px 12px; font-size: 12.5px; }
   .btn:disabled { opacity: .55; cursor: default; }
-  .badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
-  .b-verified { background: rgba(46,204,113,.15); color: #6ee7a8; }
-  .b-pending { background: rgba(245,166,35,.15); color: #f7c46c; }
-  .b-failed, .b-expired { background: rgba(255,95,87,.15); color: #ff9b95; }
-  .b-muted { background: #202631; color: #9aa4b2; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+  .b-verified { background: var(--ok-bg); color: var(--ok); }
+  .b-pending { background: var(--warn-bg); color: var(--warn); }
+  .b-failed, .b-expired { background: var(--err-bg); color: var(--err); }
+  .b-muted { background: var(--panel2); color: var(--muted); }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
   .muted { color: var(--muted); }
   .tiny { font-size: 12px; }
   .msg { margin-top: 10px; font-size: 13px; }
   .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
-  .cbox { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px; background: #0e1116; }
+  .cbox {
+    display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 7px; font-size: 12.5px; background: var(--panel);
+  }
   .cbox input { padding: 0; }
-  .clist { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 7px; max-height: 320px; overflow-y: auto; padding: 2px; }
-  .bars { display: flex; align-items: flex-end; gap: 6px; height: 110px; padding-top: 18px; }
-  .bars .bar { flex: 1 1 26px; max-width: 56px; background: linear-gradient(180deg, var(--accent), #2c5fb8); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
-  .bars .bar span { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); }
-  .bars .bar i { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); font-style: normal; }
+  .clist { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 7px; max-height: 340px; overflow-y: auto; padding: 2px; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding-top: 20px; }
+  .bars .bar {
+    flex: 1 1 26px; max-width: 56px; border-radius: 4px 4px 0 0; min-height: 2px; position: relative;
+    background: linear-gradient(180deg, var(--accent), var(--bar-to));
+  }
+  .bars .bar span { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .bars .bar i { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); font-style: normal; white-space: nowrap; }
   .pill { background: var(--panel2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 20px; font-size: 12px; }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.6; }
+  .sticky-save {
+    position: sticky; bottom: 0; padding: 14px 0 0; margin-top: 4px;
+    background: linear-gradient(180deg, transparent, var(--bg) 45%);
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .switch input { width: 0; height: 0; opacity: 0; position: absolute; }
+  .switch .track {
+    width: 40px; height: 23px; border-radius: 20px; background: var(--line-strong);
+    position: relative; transition: background .18s; flex: 0 0 auto;
+  }
+  .switch .track::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px;
+    border-radius: 50%; background: #fff; transition: transform .18s;
+  }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(17px); }
+  .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    background: var(--panel); border: 0; color: var(--muted); padding: 7px 14px;
+    cursor: pointer; font-size: 13px; border-right: 1px solid var(--line);
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+  .menu-toggle { display: none; }
+  @media (max-width: 820px) {
+    .layout { flex-direction: column; }
+    aside {
+      width: 100%; flex: none; height: auto; position: static;
+      border-right: 0; border-bottom: 1px solid var(--line);
+    }
+    .brand { padding: 14px 16px 10px; }
+    .menu { display: none; padding: 4px 10px 10px; }
+    aside.open .menu { display: block; max-height: 60vh; }
+    .menu-toggle { display: inline-flex; }
+    .grp { padding: 10px 8px 4px; }
+    main { padding: 16px 14px 60px; }
+    .topbar { padding: 12px 14px; }
+  }
 </style>
 </head>
 <body>
+<script>
+  /* 尽早应用主题，避免刷新时闪白/闪黑 */
+  (function () {
+    try {
+      document.documentElement.setAttribute('data-theme', localStorage.getItem('sv_theme') || 'light');
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  })();
+</script>
 
 <!-- 登录 / 首次初始化 -->
 <div id="login" hidden>
@@ -125,234 +283,339 @@
   </form>
 </div>
 
-<!-- 主体 -->
+<!-- 主体：左侧菜单 + 右侧内容 -->
 <div id="app" hidden>
-  <header>
-    <h1>SMS Verify 控制台</h1>
-    <span class="pill" id="mockFlag" hidden>MOCK 模式</span>
-    <span class="sp"></span>
-    <button class="btn ghost" id="logout">退出</button>
-  </header>
-  <nav>
-    <button data-tab="overview" class="on">概览</button>
-    <button data-tab="records">记录</button>
-    <button data-tab="config">配置</button>
-    <button data-tab="test">测试</button>
-  </nav>
-  <main>
-    <!-- 概览 -->
-    <section id="tab-overview" class="on">
-      <div class="card">
-        <h2>近 30 天</h2>
-        <div class="grid" id="kpis"></div>
+<div class="layout">
+
+  <!-- ═══ 左侧菜单 ═══ -->
+  <aside id="sidebar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>SMS Verify</span>
+      <span class="pill tiny" id="mockFlag" hidden style="margin-left:auto">MOCK</span>
+      <button class="icon-btn menu-toggle" id="menuToggle" title="菜单">☰</button>
+    </div>
+
+    <div class="menu" id="menu">
+      <div class="grp">数据</div>
+      <button data-tab="overview" class="on"><span class="ico">▦</span>概览</button>
+      <button data-tab="records"><span class="ico">☰</span>验证记录</button>
+
+      <div class="grp">短信</div>
+      <button data-tab="provider"><span class="ico">✈</span>短信通道</button>
+      <button data-tab="captcha"><span class="ico">⛨</span>人机检测</button>
+      <button data-tab="limits"><span class="ico">◎</span>国家与频控</button>
+
+      <div class="grp">落地页</div>
+      <button data-tab="links"><span class="ico">↗</span>跳转与站点</button>
+      <button data-tab="texts"><span class="ico">✎</span>弹窗文案</button>
+
+      <div class="grp">系统</div>
+      <button data-tab="account"><span class="ico">◍</span>我的账号</button>
+    </div>
+
+    <div class="foot">
+      <span class="who" id="whoami">admin</span>
+      <button class="icon-btn" id="themeBtn" title="切换白天/黑夜">☀</button>
+      <button class="icon-btn" id="logout" title="退出登录">⏻</button>
+    </div>
+  </aside>
+
+  <!-- ═══ 右侧内容 ═══ -->
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <h2 id="pageTitle">概览</h2>
+        <div class="desc" id="pageDesc">最近的验证情况</div>
       </div>
-      <div class="card">
-        <h2>近 14 天趋势</h2>
-        <div class="bars" id="bars"></div>
-        <div style="height:24px"></div>
-      </div>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
-        <div class="card"><h2>按国家</h2><div class="scroll"><table id="byCountry"></table></div></div>
-        <div class="card"><h2>按通道</h2><div class="scroll"><table id="byProvider"></table></div></div>
-        <div class="card"><h2>按站点</h2><div class="scroll"><table id="bySite"></table></div></div>
-      </div>
-    </section>
+      <span class="sp"></span>
+      <button class="btn sm" id="saveAll" hidden>保存修改</button>
+    </div>
 
-    <!-- 记录 -->
-    <section id="tab-records">
-      <div class="card">
-        <div class="row">
-          <label class="f" style="margin:0"><span>手机号</span><input id="fPhone" placeholder="4155..." /></label>
-          <label class="f" style="margin:0"><span>状态</span>
-            <select id="fStatus">
-              <option value="">全部</option><option>pending</option><option>verified</option>
-              <option>failed</option><option>expired</option>
-            </select>
-          </label>
-          <label class="f" style="margin:0"><span>通道</span>
-            <select id="fProvider">
-              <option value="">全部</option><option>twilio</option><option>plivo</option><option>mock</option>
-            </select>
-          </label>
-          <label class="f" style="margin:0"><span>站点</span><input id="fSite" placeholder="ai-lander" style="width:130px" /></label>
-          <label class="f" style="margin:0"><span>起</span><input type="date" id="fFrom" /></label>
-          <label class="f" style="margin:0"><span>止</span><input type="date" id="fTo" /></label>
-          <button class="btn" id="doSearch">查询</button>
-          <button class="btn ghost" id="doReset">重置</button>
-          <button class="btn ghost" id="doExport">导出 CSV</button>
+    <main>
+      <!-- ─── 概览 ─── -->
+      <section id="tab-overview" class="on">
+        <div class="card">
+          <h3>近 30 天</h3>
+          <p class="sub">按验证会话统计，含未完成的记录</p>
+          <div class="grid" id="kpis"></div>
         </div>
-      </div>
-      <div class="card">
-        <div class="scroll"><table id="records"></table></div>
-        <div class="row" style="margin-top:12px;align-items:center">
-          <button class="btn ghost" id="prevPage">上一页</button>
-          <span class="muted tiny" id="pageInfo"></span>
-          <button class="btn ghost" id="nextPage">下一页</button>
+        <div class="card">
+          <h3>近 14 天趋势</h3>
+          <div class="bars" id="bars"></div>
+          <div style="height:24px"></div>
         </div>
-      </div>
-    </section>
+        <div class="grid two">
+          <div class="card"><h3>按国家</h3><div class="scroll"><table id="byCountry"></table></div></div>
+          <div class="card"><h3>按通道</h3><div class="scroll"><table id="byProvider"></table></div></div>
+          <div class="card"><h3>按站点</h3><div class="scroll"><table id="bySite"></table></div></div>
+        </div>
+      </section>
 
-    <!-- 配置 -->
-    <section id="tab-config">
-      <div class="card">
-        <h2>允许的国家（只勾一个国家 = 只允许该国）</h2>
-        <div class="row" style="margin-bottom:8px">
-          <input id="cSearch" placeholder="搜索国家 / 代码" style="width:190px" />
-          <button class="btn ghost" data-preset="US">仅美国</button>
-          <button class="btn ghost" data-preset="US,CA">美 + 加</button>
-          <button class="btn ghost" data-preset="US,CA,GB,AU,IE,NZ">英语区</button>
-          <button class="btn ghost" data-preset="US,CA,GB,IE,DE,FR,IT,ES,PT,NL,BE,AT,CH,SE,NO,DK,FI,AU,NZ">欧美</button>
-          <button class="btn ghost" data-preset="__clear">清空</button>
-          <span class="tiny muted" id="cCount"></span>
+      <!-- ─── 验证记录 ─── -->
+      <section id="tab-records">
+        <div class="card">
+          <h3>筛选</h3>
+          <div class="row" style="margin-top:10px">
+            <label class="f" style="margin:0"><span>手机号</span><input id="fPhone" placeholder="4155..." /></label>
+            <label class="f" style="margin:0"><span>状态</span>
+              <select id="fStatus">
+                <option value="">全部</option><option>pending</option><option>verified</option>
+                <option>failed</option><option>expired</option>
+              </select>
+            </label>
+            <label class="f" style="margin:0"><span>通道</span>
+              <select id="fProvider">
+                <option value="">全部</option><option>twilio</option><option>plivo</option>
+                <option>onbuka</option><option>mock</option>
+              </select>
+            </label>
+            <label class="f" style="margin:0"><span>站点</span><input id="fSite" placeholder="ai-lander" style="width:130px" /></label>
+            <label class="f" style="margin:0"><span>起</span><input type="date" id="fFrom" /></label>
+            <label class="f" style="margin:0"><span>止</span><input type="date" id="fTo" /></label>
+            <button class="btn" id="doSearch">查询</button>
+            <button class="btn ghost" id="doReset">重置</button>
+            <button class="btn ghost" id="doExport">导出 CSV</button>
+          </div>
         </div>
-        <div class="clist" id="cList"></div>
-      </div>
-
-      <div class="card">
-        <h2>通道与风控</h2>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-          <label class="f"><span>短信通道</span>
-            <select id="cfgProvider">
-              <option value="auto">auto（按顺序容灾）</option>
-              <option value="twilio">仅 Twilio</option>
-              <option value="plivo">仅 Plivo</option>
-              <option value="onbuka">仅 Onbuka</option>
-              <option value="mock">mock（调试）</option>
-            </select>
-          </label>
-          <label class="f"><span>优先级 1</span>
-            <select id="cfgPri1"><option>twilio</option><option>plivo</option><option>onbuka</option></select>
-          </label>
-          <label class="f"><span>优先级 2</span>
-            <select id="cfgPri2"><option>plivo</option><option>twilio</option><option>onbuka</option><option value="">（无）</option></select>
-          </label>
-          <label class="f"><span>优先级 3</span>
-            <select id="cfgPri3"><option value="">（无）</option><option>onbuka</option><option>twilio</option><option>plivo</option></select>
-          </label>
-          <label class="f"><span>重发间隔（秒）</span><input type="number" id="cfgResend" min="0" /></label>
-          <label class="f"><span>单号码每日上限</span><input type="number" id="cfgPhoneDaily" min="0" /></label>
-          <label class="f"><span>单 IP 每小时上限</span><input type="number" id="cfgIpHourly" min="0" /></label>
-          <label class="f"><span>全站每小时上限</span><input type="number" id="cfgGlobal" min="0" /></label>
-          <label class="f"><span>单次最多试错次数</span><input type="number" id="cfgAttempts" min="1" /></label>
-          <label class="f"><span>验证通过后免验时长（小时）</span><input type="number" id="cfgGrantTtl" min="0" /></label>
+        <div class="card">
+          <div class="scroll"><table id="records"></table></div>
+          <div class="row" style="margin-top:12px;align-items:center">
+            <button class="btn ghost sm" id="prevPage">上一页</button>
+            <span class="muted tiny" id="pageInfo"></span>
+            <button class="btn ghost sm" id="nextPage">下一页</button>
+          </div>
         </div>
-        <div class="hint">免验时长设 0 表示每次点击都要重新验证。</div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>人机检测（Cloudflare Turnstile）</h2>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
-          <label class="f"><span>启用</span>
-            <select id="cfgTsEnabled"><option value="1">启用</option><option value="0">关闭</option></select>
-          </label>
-          <label class="f"><span>Site Key（前端公开）</span><input id="cfgTsKey" placeholder="0x4AAA..." /></label>
-          <label class="f"><span>Secret Key（保密）</span>
-            <input id="credTurnstileSecret" type="password" placeholder="未设置则留空" autocomplete="off" />
-          </label>
-        </div>
-        <div class="hint">Secret Key 保存在你自己的数据库里（加密存储），后台可直接修改。留空表示不修改。</div>
-      </div>
-
-      <div class="card">
-        <h2>短信通道凭证</h2>
-        <div class="hint" style="margin-bottom:12px">
-          填在这里的密钥会加密存入你自己的数据库，不需要重新部署即可生效。留空表示不修改。
+      <!-- ─── 短信通道 ─── -->
+      <section id="tab-provider">
+        <div class="card">
+          <h3>使用哪个通道发验证码</h3>
+          <p class="sub">
+            选 <b>auto</b> 时按下面的优先级依次尝试，前一家失败自动切下一家。
+            Twilio / Plivo 自带验证码校验；Onbuka 是普通短信网关，验证码由本服务生成并校验。
+          </p>
+          <div class="grid">
+            <label class="f"><span>通道</span>
+              <select id="cfgProvider">
+                <option value="auto">auto（按优先级容灾）</option>
+                <option value="twilio">仅 Twilio</option>
+                <option value="plivo">仅 Plivo</option>
+                <option value="onbuka">仅 Onbuka</option>
+                <option value="mock">mock（调试用）</option>
+              </select>
+            </label>
+            <label class="f"><span>优先级 1</span>
+              <select id="cfgPri1"><option>twilio</option><option>plivo</option><option>onbuka</option></select>
+            </label>
+            <label class="f"><span>优先级 2</span>
+              <select id="cfgPri2"><option>plivo</option><option>twilio</option><option>onbuka</option><option value="">（无）</option></select>
+            </label>
+            <label class="f"><span>优先级 3</span>
+              <select id="cfgPri3"><option value="">（无）</option><option>onbuka</option><option>twilio</option><option>plivo</option></select>
+            </label>
+          </div>
         </div>
 
-        <h3 style="font-size:13px;margin:14px 0 8px;color:#8b95a5">Twilio Verify</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-          <label class="f"><span>Account SID（AC 开头）</span><input id="credTwilioSid" autocomplete="off" /></label>
-          <label class="f"><span>Auth Token</span><input id="credTwilioToken" type="password" autocomplete="off" /></label>
-          <label class="f"><span>Verify Service SID（VA 开头）</span><input id="credTwilioService" autocomplete="off" /></label>
-        </div>
+        <div class="card">
+          <h3>通道凭证</h3>
+          <p class="sub">
+            填在这里的密钥会<b>加密存入你自己的数据库</b>，保存后即时生效，不需要重新部署。
+            留空表示不修改；绿色边框表示该项已配置。
+          </p>
 
-        <h3 style="font-size:13px;margin:18px 0 8px;color:#8b95a5">Plivo Verify</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-          <label class="f"><span>Auth ID</span><input id="credPlivoId" autocomplete="off" /></label>
-          <label class="f"><span>Auth Token</span><input id="credPlivoToken" type="password" autocomplete="off" /></label>
-          <label class="f"><span>Verify App UUID</span><input id="credPlivoApp" autocomplete="off" /></label>
-        </div>
+          <h4 class="grp" style="color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.04em;margin:4px 0 8px">TWILIO VERIFY</h4>
+          <div class="grid">
+            <label class="f"><span>Account SID（AC 开头）</span><input id="credTwilioSid" autocomplete="off" /></label>
+            <label class="f"><span>Auth Token</span><input id="credTwilioToken" type="password" autocomplete="off" /></label>
+            <label class="f"><span>Verify Service SID（VA 开头）</span><input id="credTwilioService" autocomplete="off" /></label>
+          </div>
 
-        <h3 style="font-size:13px;margin:18px 0 8px;color:#8b95a5">Onbuka</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-          <label class="f"><span>Api-Key</span><input id="credOnbukaKey" autocomplete="off" /></label>
-          <label class="f"><span>API Secret（密码）</span><input id="credOnbukaPwd" type="password" autocomplete="off" /></label>
-          <label class="f"><span>应用 ID（appId）</span><input id="credOnbukaApp" autocomplete="off" /></label>
-          <label class="f"><span>Sender ID（可选）</span><input id="credOnbukaSender" autocomplete="off" /></label>
-          <label class="f"><span>短信模板</span>
-            <input id="credOnbukaTemplate" placeholder="Your verification code is {code}" autocomplete="off" />
+          <h4 style="color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.04em;margin:16px 0 8px">PLIVO VERIFY</h4>
+          <div class="grid">
+            <label class="f"><span>Auth ID</span><input id="credPlivoId" autocomplete="off" /></label>
+            <label class="f"><span>Auth Token</span><input id="credPlivoToken" type="password" autocomplete="off" /></label>
+            <label class="f"><span>Verify App UUID</span><input id="credPlivoApp" autocomplete="off" /></label>
+          </div>
+
+          <h4 style="color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.04em;margin:16px 0 8px">ONBUKA</h4>
+          <div class="grid">
+            <label class="f"><span>Api-Key</span><input id="credOnbukaKey" autocomplete="off" /></label>
+            <label class="f"><span>API Secret</span><input id="credOnbukaPwd" type="password" autocomplete="off" /></label>
+            <label class="f"><span>应用 ID（appId）</span><input id="credOnbukaApp" autocomplete="off" /></label>
+            <label class="f"><span>Sender ID（可选）</span><input id="credOnbukaSender" autocomplete="off" /></label>
+            <label class="f"><span>短信模板</span>
+              <input id="credOnbukaTemplate" placeholder="Your verification code is {code}" autocomplete="off" />
+            </label>
+          </div>
+          <div class="hint">
+            模板里 <code>{code}</code> = 验证码，<code>{brand}</code> = 品牌名。
+            签名规则 <code>md5(Api-Key + API Secret + 时间戳)</code> 已按官方文档实现；验证码有效期 10 分钟。
+          </div>
+
+          <h4 style="color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.04em;margin:16px 0 8px">运行模式</h4>
+          <label class="switch">
+            <input type="checkbox" id="credMockToggle" />
+            <span class="track"></span>
+            <span>调试模式（不发真实短信，验证码固定 123456）</span>
           </label>
-        </div>
-        <div class="hint">
-          Onbuka 是普通短信网关（没有 OTP 校验接口），验证码由本服务生成并校验，有效期 10 分钟。
-          模板里用 <code>{code}</code> 表示验证码、<code>{brand}</code> 表示品牌名。
-          签名规则 <code>md5(Api-Key + API Secret + 时间戳)</code> 已按官方文档实现。
+
+          <div style="margin-top:14px">
+            <div class="tiny muted" style="margin-bottom:6px">配置状态（绿色=已设置，红色=未设置）</div>
+            <div id="secretHint"></div>
+          </div>
         </div>
 
-        <h3 style="font-size:13px;margin:18px 0 8px;color:#8b95a5">运行模式</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-          <label class="f"><span>调试模式（不发真实短信）</span>
-            <select id="credMockMode"><option value="">保持不变</option><option value="0">关闭</option><option value="1">开启</option></select>
+        <div class="card">
+          <h3>通道状态与测试</h3>
+          <p class="sub">发一条测试短信，直接看到走的是哪个通道、失败原因是什么。</p>
+          <div class="scroll" style="margin-bottom:14px"><table id="providers"></table></div>
+          <div class="row">
+            <label class="f" style="margin:0"><span>国家</span><select id="tCountry" style="width:170px"></select></label>
+            <label class="f" style="margin:0"><span>手机号</span><input id="tPhone" placeholder="4155552671" style="width:170px" /></label>
+            <button class="btn" id="doTest">发送测试</button>
+          </div>
+          <div class="msg" id="testMsg"></div>
+        </div>
+      </section>
+
+      <!-- ─── 人机检测 ─── -->
+      <section id="tab-captcha">
+        <div class="card">
+          <h3>Cloudflare Turnstile</h3>
+          <p class="sub">
+            在发短信之前拦截机器人，避免有人刷你的短信费。免费且不限量。
+            到 Cloudflare 控制台 <b>Turnstile → Add widget</b> 创建，两个 Key 都填在这里。
+          </p>
+          <label class="switch" style="margin-bottom:16px">
+            <input type="checkbox" id="cfgTsEnabledBox" />
+            <span class="track"></span>
+            <span>启用（强烈建议开启）</span>
           </label>
+          <div class="grid">
+            <label class="f"><span>Site Key（公开，前端用）</span><input id="cfgTsKey" placeholder="0x4AAA..." autocomplete="off" /></label>
+            <label class="f"><span>Secret Key（保密）</span><input id="credTurnstileSecret" type="password" placeholder="留空则不修改" autocomplete="off" /></label>
+          </div>
+          <div class="hint">
+            在 Turnstile 的 Hostnames 里填上你所有落地页的域名，
+            否则别的网站可以盗用你的验证额度。
+          </div>
         </div>
-        <div class="hint">开启后不会真发短信，验证码固定为 <code>123456</code>，适合本地或上线前试跑。</div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>跳转链接</h2>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <!-- ─── 国家与频控 ─── -->
+      <section id="tab-limits">
+        <div class="card">
+          <h3>允许的国家</h3>
+          <p class="sub">只勾一个国家 = 只允许该国号码。注意美国和加拿大都是 +1，系统按号码段区分。</p>
+          <div class="row" style="margin-bottom:10px">
+            <input id="cSearch" placeholder="搜索国家 / 代码" style="width:200px" />
+            <button class="btn ghost sm" data-preset="US">仅美国</button>
+            <button class="btn ghost sm" data-preset="US,CA">美 + 加</button>
+            <button class="btn ghost sm" data-preset="US,CA,GB,AU,IE,NZ">英语区</button>
+            <button class="btn ghost sm" data-preset="US,CA,GB,IE,DE,FR,IT,ES,PT,NL,BE,AT,CH,SE,NO,DK,FI,AU,NZ">欧美</button>
+            <button class="btn ghost sm" data-preset="__clear">清空</button>
+            <span class="tiny muted" id="cCount"></span>
+          </div>
+          <div class="clist" id="cList"></div>
+        </div>
+
+        <div class="card">
+          <h3>频率限制</h3>
+          <p class="sub">防止单个号码或 IP 被反复刷短信。设为 0 表示不限制。</p>
+          <div class="grid">
+            <label class="f"><span>重发间隔（秒）</span><input type="number" id="cfgResend" min="0" /></label>
+            <label class="f"><span>单号码每日上限</span><input type="number" id="cfgPhoneDaily" min="0" /></label>
+            <label class="f"><span>单 IP 每小时上限</span><input type="number" id="cfgIpHourly" min="0" /></label>
+            <label class="f"><span>全站每小时上限</span><input type="number" id="cfgGlobal" min="0" /></label>
+            <label class="f"><span>单次最多试错次数</span><input type="number" id="cfgAttempts" min="1" /></label>
+            <label class="f"><span>验证通过后免验时长（小时）</span><input type="number" id="cfgGrantTtl" min="0" /></label>
+          </div>
+          <div class="hint">免验时长设 0 表示每次点击都要重新验证；设 24 表示通过后 24 小时内免验证。</div>
+        </div>
+      </section>
+
+      <!-- ─── 跳转与站点 ─── -->
+      <section id="tab-links">
+        <div class="card">
+          <h3>跳转目标</h3>
+          <p class="sub">
+            <b>client</b>：链接留在落地页里，验证通过后由页面跳转（最简单，推荐）。
+            <b>server</b>：验证通过后由服务端下发链接，源码里看不到真实链接（更安全）。
+          </p>
           <label class="f"><span>链接模式</span>
             <select id="cfgLinkMode">
               <option value="client">client（链接留在落地页）</option>
               <option value="server">server（验证通过后下发）</option>
             </select>
           </label>
-          <label class="f"><span>主题色</span><input type="color" id="cfgAccent" /></label>
+          <label class="f"><span>WhatsApp 链接池（每行一条，server 模式使用；会随机选一条）</span>
+            <textarea id="cfgLinks" placeholder="https://chat.whatsapp.com/xxxx"></textarea>
+          </label>
         </div>
-        <label class="f"><span>WhatsApp 链接池（每行一条，server 模式使用）</span>
-          <textarea id="cfgLinks" placeholder="https://chat.whatsapp.com/xxxx"></textarea>
-        </label>
-      </div>
 
-      <div class="card">
-        <h2>允许调用的站点来源</h2>
-        <label class="f"><span>每行一个域名（<code>*</code> 表示不限制）</span>
-          <textarea id="cfgOrigins" placeholder="https://lander-a.com&#10;https://lander-b.com"></textarea>
-        </label>
-        <div class="hint">生产环境建议填具体域名，避免别人盗用你的短信额度。</div>
-      </div>
-
-      <div class="card">
-        <h2>弹窗文案</h2>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))" id="textsGrid"></div>
-      </div>
-
-      <div class="row" style="position:sticky;bottom:0;padding:12px 0;background:linear-gradient(180deg,transparent,var(--bg) 40%)">
-        <button class="btn" id="saveConfig">保存配置</button>
-        <button class="btn ghost" id="reloadConfig">放弃修改</button>
-        <span class="msg" id="cfgMsg"></span>
-      </div>
-    </section>
-
-    <!-- 测试 -->
-    <section id="tab-test">
-      <div class="card">
-        <h2>发送测试短信</h2>
-        <div class="row">
-          <label class="f" style="margin:0"><span>国家</span><select id="tCountry" style="width:150px"></select></label>
-          <label class="f" style="margin:0"><span>号码</span><input id="tPhone" placeholder="4155552671" style="width:180px" /></label>
-          <button class="btn" id="doTest">发送</button>
+        <div class="card">
+          <h3>允许调用的站点</h3>
+          <p class="sub">
+            只有列表里的域名可以调用验证接口。这是防止别人盗用你短信额度的重要一道闸，
+            上线后建议把 <code>*</code> 换成你自己的落地页域名。
+          </p>
+          <textarea id="cfgOrigins" placeholder="https://lander-a.com&#10;https://lander-b.com" style="min-height:110px"></textarea>
+          <div class="hint">每行一个，带 <code>https://</code> 前缀；填 <code>*</code> 表示不限制。</div>
         </div>
-        <div class="msg" id="testMsg"></div>
-        <div class="hint">测试发送不受国家白名单与频控限制，但会记入记录（站点标记为 admin-test）。</div>
-      </div>
-      <div class="card">
-        <h2>通道配置状态</h2>
-        <div class="scroll"><table id="providers"></table></div>
-        <div class="hint" id="secretHint"></div>
-      </div>
-    </section>
-  </main>
+
+        <div class="card">
+          <h3>弹窗外观</h3>
+          <div class="row">
+            <label class="f" style="margin:0;max-width:160px">
+              <span>主题色（验证弹窗主按钮颜色）</span>
+              <input type="color" id="cfgAccent" style="width:100%;height:40px;padding:3px;cursor:pointer" />
+            </label>
+            <label class="f" style="margin:0;max-width:220px;align-self:flex-end">
+              <span>十六进制值</span>
+              <input id="cfgAccentText" placeholder="#16a34a" />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── 弹窗文案 ─── -->
+      <section id="tab-texts">
+        <div class="card">
+          <h3>验证弹窗文案</h3>
+          <p class="sub">这些文字会显示给落地页访客，按你的产品语气调整即可。</p>
+          <div class="grid two" id="textsGrid"></div>
+        </div>
+      </section>
+
+      <!-- ─── 我的账号 ─── -->
+      <section id="tab-account">
+        <div class="card">
+          <h3>当前登录</h3>
+          <p class="sub">账号：<b id="acctName">-</b></p>
+          <div class="hint">会话有效期 12 小时，过期后需要重新登录。</div>
+        </div>
+        <div class="card">
+          <h3>修改密码</h3>
+          <p class="sub">至少 8 位。修改后当前会话仍然有效，下次登录用新密码。</p>
+          <div class="grid two">
+            <label class="f"><span>当前密码</span><input type="password" id="pwdCurrent" autocomplete="current-password" /></label>
+            <label class="f"><span>新密码</span><input type="password" id="pwdNew" autocomplete="new-password" /></label>
+            <label class="f"><span>确认新密码</span><input type="password" id="pwdNew2" autocomplete="new-password" /></label>
+          </div>
+          <button class="btn" id="doChangePwd">修改密码</button>
+          <div class="msg" id="pwdMsg"></div>
+        </div>
+        <div class="card">
+          <h3>管理员账号</h3>
+          <p class="sub">当前 Worker 的管理员列表。</p>
+          <div class="scroll"><table id="adminList"></table></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
 </div>
 
 <script>
@@ -435,18 +698,72 @@
     api('/admin/api/logout', { method: 'POST' }).then(showLogin);
   });
 
-  /* ── Tab ── */
-  [].forEach.call(document.querySelectorAll('nav button'), function (btn) {
-    btn.addEventListener('click', function () {
-      [].forEach.call(document.querySelectorAll('nav button'), function (b) { b.classList.remove('on'); });
-      btn.classList.add('on');
-      [].forEach.call(document.querySelectorAll('section'), function (s) { s.classList.remove('on'); });
-      $('tab-' + btn.dataset.tab).classList.add('on');
-      if (btn.dataset.tab === 'overview') loadStats();
-      if (btn.dataset.tab === 'records') loadRecords();
-      if (btn.dataset.tab === 'config') loadConfig();
-      if (btn.dataset.tab === 'test') loadProviders();
+  /* ══════════ 主题（白天/黑夜）══════════ */
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    var btn = $('themeBtn');
+    if (btn) {
+      /* 图标表示"点了会变成什么"：白天显示月亮，黑夜显示太阳 */
+      btn.textContent = theme === 'dark' ? '☀' : '☾';
+      btn.title = theme === 'dark' ? '切换到白天模式' : '切换到黑夜模式';
+    }
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      document.head.appendChild(meta);
+    }
+    meta.content = theme === 'dark' ? '#0c0e12' : '#ffffff';
+    try { localStorage.setItem('sv_theme', theme); } catch (e) { /* ignore */ }
+  }
+  $('themeBtn').addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+  /* 首次进入时同步一次图标（主题本身已由页面顶部的内联脚本设置好） */
+  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+
+  /* ══════════ 菜单与页面切换 ══════════ */
+  var PAGE_META = {
+    overview: ['概览', '最近的验证情况'],
+    records: ['验证记录', '查询每一次手机号验证的明细，可导出 CSV'],
+    provider: ['短信通道', '选择用哪家发短信、填密钥、发测试短信'],
+    captcha: ['人机检测', '在发短信前拦截机器人，避免被刷短信费'],
+    limits: ['国家与频控', '只允许指定国家的号码，并限制发送频率'],
+    links: ['跳转与站点', '验证通过后跳去哪里，以及允许哪些站点调用'],
+    texts: ['弹窗文案', '落地页上验证弹窗显示的文字'],
+    account: ['我的账号', '修改后台密码、查看管理员'],
+  };
+  /* 需要底部"保存修改"按钮的页面 */
+  var SAVE_TABS = { provider: 1, captcha: 1, limits: 1, links: 1, texts: 1 };
+
+  function goto(tab) {
+    [].forEach.call(document.querySelectorAll('#menu button'), function (b) {
+      b.classList.toggle('on', b.dataset.tab === tab);
     });
+    [].forEach.call(document.querySelectorAll('main section'), function (s) {
+      s.classList.toggle('on', s.id === 'tab-' + tab);
+    });
+    var m = PAGE_META[tab] || ['', ''];
+    $('pageTitle').textContent = m[0];
+    $('pageDesc').textContent = m[1];
+    $('saveAll').hidden = !SAVE_TABS[tab];
+    $('sidebar').classList.remove('open');
+    try { location.hash = tab; } catch (e) { /* ignore */ }
+
+    if (tab === 'overview') loadStats();
+    if (tab === 'records') loadRecords();
+    if (tab === 'provider') { loadConfig(); loadProviders(); }
+    if (tab === 'captcha' || tab === 'limits' || tab === 'links' || tab === 'texts') loadConfig();
+    if (tab === 'account') loadAccount();
+  }
+
+  [].forEach.call(document.querySelectorAll('#menu button'), function (btn) {
+    btn.addEventListener('click', function () { goto(btn.dataset.tab); });
+  });
+
+  $('menuToggle').addEventListener('click', function () {
+    $('sidebar').classList.toggle('open');
   });
 
   /* ── 概览 ── */
@@ -576,10 +893,11 @@
       $('cfgGlobal').value = config.globalHourlyLimit;
       $('cfgAttempts').value = config.codeMaxAttempts;
       $('cfgGrantTtl').value = config.grantTtlHours;
-      $('cfgTsEnabled').value = config.turnstileEnabled ? '1' : '0';
+      $('cfgTsEnabledBox').checked = Boolean(config.turnstileEnabled);
       $('cfgTsKey').value = config.turnstileSiteKey || '';
       $('cfgLinkMode').value = config.linkMode;
       $('cfgAccent').value = config.accentColor || '#30a05c';
+      $('cfgAccentText').value = $('cfgAccent').value;
       $('cfgLinks').value = (config.whatsappLinks || []).join('\n');
       $('cfgOrigins').value = (config.allowedOrigins || []).join('\n');
 
@@ -588,8 +906,34 @@
           '<input data-text-key="' + f[0] + '" value="' + esc((config.texts || {})[f[0]] || '') + '" /></label>';
       }).join('');
 
-      var s = meta.secrets || {};
       loadCredentials();
+      // 有任一通道凭证未配置时，在侧边栏给个提示点
+      markUnconfigured();
+    });
+  }
+
+  /** 若一个短信通道都没配好，给菜单加个小圆点 */
+  function markUnconfigured() {
+    api('/admin/api/credentials').then(function (res) {
+      if (!res.ok) return;
+      var s = res.status || {};
+      var twilioOk = s.TWILIO_ACCOUNT_SID && s.TWILIO_AUTH_TOKEN && s.TWILIO_VERIFY_SERVICE_SID;
+      var plivoOk = s.PLIVO_AUTH_ID && s.PLIVO_AUTH_TOKEN && s.PLIVO_APP_UUID;
+      var onbukaOk = s.ONBUKA_API_KEY && s.ONBUKA_API_PWD && s.ONBUKA_APP_ID;
+      var ok = twilioOk || plivoOk || onbukaOk || s.MOCK_MODE;
+      var btn = document.querySelector('#menu button[data-tab="provider"]');
+      if (!btn) return;
+      var dot = btn.querySelector('.warn-dot');
+      if (!ok && !dot) {
+        dot = document.createElement('span');
+        dot.className = 'warn-dot';
+        dot.textContent = '●';
+        dot.style.cssText = 'margin-left:auto;font-size:9px;color:var(--warn)';
+        dot.title = '还没有配置短信通道凭证';
+        btn.appendChild(dot);
+      } else if (ok && dot) {
+        dot.remove();
+      }
     });
   }
 
@@ -642,7 +986,19 @@
     });
   });
 
-  $('saveConfig').addEventListener('click', function () {
+  /* 主题色：色块与十六进制值双向同步 */
+  function hexColor(v) {
+    v = String(v || '').trim();
+    if (/^[0-9a-fA-F]{6}$/.test(v)) v = '#' + v;
+    return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '';
+  }
+  $('cfgAccent').addEventListener('input', function () { $('cfgAccentText').value = this.value; });
+  $('cfgAccentText').addEventListener('input', function () {
+    var v = hexColor(this.value);
+    if (v) $('cfgAccent').value = v;
+  });
+
+  $('saveAll').addEventListener('click', function () {
     var selected = [].map.call(document.querySelectorAll('#cList input:checked'), function (i) { return i.value; });
     var texts = {};
     [].forEach.call(document.querySelectorAll('[data-text-key]'), function (i) { texts[i.dataset.textKey] = i.value; });
@@ -658,19 +1014,23 @@
       globalHourlyLimit: Number($('cfgGlobal').value) || 0,
       codeMaxAttempts: Number($('cfgAttempts').value) || 5,
       grantTtlHours: Number($('cfgGrantTtl').value) || 0,
-      turnstileEnabled: $('cfgTsEnabled').value === '1',
+      turnstileEnabled: $('cfgTsEnabledBox').checked,
       turnstileSiteKey: $('cfgTsKey').value.trim(),
       linkMode: $('cfgLinkMode').value,
-      accentColor: $('cfgAccent').value,
+      accentColor: hexColor($('cfgAccentText').value) || $('cfgAccent').value,
       whatsappLinks: $('cfgLinks').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
       allowedOrigins: $('cfgOrigins').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
       texts: texts,
     };
 
+    $('saveAll').disabled = true;
+    $('saveAll').textContent = '保存中…';
+
     api('/admin/api/config', { method: 'PUT', body: { config: patch } }).then(function (res) {
+      $('saveAll').disabled = false;
+      $('saveAll').textContent = '保存修改';
       if (!res.ok) {
-        $('cfgMsg').className = 'msg err';
-        $('cfgMsg').textContent = '保存失败';
+        toast('保存失败', true);
         return;
       }
       // 凭证单独保存：只提交填了值的项，留空表示不修改
@@ -682,46 +1042,64 @@
        ['credOnbukaKey','ONBUKA_API_KEY'], ['credOnbukaPwd','ONBUKA_API_PWD'],
        ['credOnbukaApp','ONBUKA_APP_ID'], ['credOnbukaSender','ONBUKA_SENDER_ID'],
        ['credOnbukaTemplate','ONBUKA_TEMPLATE'],
-       ['credTurnstileSecret','TURNSTILE_SECRET'],
-       ['credMockMode','MOCK_MODE']].forEach(function (pair) {
+       ['credTurnstileSecret','TURNSTILE_SECRET']].forEach(function (pair) {
         var v = $(pair[0]) ? $(pair[0]).value.trim() : '';
         if (v !== '') creds[pair[1]] = v;
       });
+      // 调试模式开关：显式提交 0/1，确保关得掉
+      creds.MOCK_MODE = $('credMockToggle').checked ? '1' : '0';
 
       var done = function () {
-        $('cfgMsg').className = 'msg ok';
-        $('cfgMsg').textContent = '已保存，10 秒内对所有落地页生效';
+        toast('已保存，10 秒内对所有落地页生效');
         loadConfig();
+        loadProviders();
       };
-      if (Object.keys(creds).length) {
-        api('/admin/api/credentials', { method: 'PUT', body: { credentials: creds } })
-          .then(function (r) {
-            if (!r.ok) {
-              $('cfgMsg').className = 'msg err';
-              $('cfgMsg').textContent = '凭证保存失败';
-              return;
-            }
-            // 清空密码类输入框，避免明文停留在页面上
-            [['credTwilioToken'], ['credPlivoToken'], ['credOnbukaPwd'], ['credTurnstileSecret']]
-              .forEach(function (p) { if ($(p[0])) $(p[0]).value = ''; });
-            if ($('credMockMode')) $('credMockMode').value = '';
-            done();
-          });
-      } else {
-        done();
-      }
+      api('/admin/api/credentials', { method: 'PUT', body: { credentials: creds } })
+        .then(function (r) {
+          if (!r.ok) { toast('凭证保存失败', true); return; }
+          // 清空密码类输入框，避免明文停留在页面上
+          ['credTwilioToken', 'credPlivoToken', 'credOnbukaPwd', 'credTurnstileSecret']
+            .forEach(function (id) { if ($(id)) $(id).value = ''; });
+          done();
+        });
     });
   });
-  $('reloadConfig').addEventListener('click', function () { $('cfgMsg').textContent = ''; loadConfig(); });
+
+  /** 轻提示（右下角浮出，2.4 秒后消失） */
+  function toast(text, isErr) {
+    var el = document.getElementById('svToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'svToast';
+      el.style.cssText =
+        'position:fixed;right:20px;bottom:20px;z-index:99;padding:11px 16px;border-radius:10px;' +
+        'font-size:13.5px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.16);' +
+        'transition:opacity .25s,transform .25s;opacity:0;transform:translateY(8px);pointer-events:none';
+      document.body.appendChild(el);
+    }
+    el.style.background = isErr ? 'var(--err-bg)' : 'var(--ok-bg)';
+    el.style.color = isErr ? 'var(--err)' : 'var(--ok)';
+    el.style.border = '1px solid ' + (isErr ? 'var(--err)' : 'var(--ok)');
+    el.textContent = text;
+    requestAnimationFrame(function () { el.style.opacity = '1'; el.style.transform = 'none'; });
+    clearTimeout(el._t);
+    el._t = setTimeout(function () {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(8px)';
+    }, 2400);
+  }
 
   /* ── 测试 ── */
   function loadProviders() {
     api('/admin/api/providers').then(function (res) {
       if (!res.ok) return;
       $('mockFlag').hidden = !res.mockMode;
-      $('providers').innerHTML = '<thead><tr><th>通道</th><th>密钥状态</th></tr></thead><tbody>' +
+      if ($('credMockToggle')) $('credMockToggle').checked = Boolean(res.mockMode);
+      var KIND = { otp: '自带验证码校验', local: '验证码由本服务校验' };
+      $('providers').innerHTML = '<thead><tr><th>通道</th><th>类型</th><th>密钥状态</th></tr></thead><tbody>' +
         res.providers.map(function (p) {
-          return '<tr><td>' + esc(p.name) + '</td><td>' +
+          return '<tr><td><b>' + esc(p.name) + '</b></td>' +
+            '<td class="tiny muted">' + (KIND[p.kind] || '-') + '</td><td>' +
             (p.configured ? '<span class="badge b-verified">已配置</span>' : '<span class="badge b-muted">未配置</span>') +
             '</td></tr>';
         }).join('') + '</tbody>';
@@ -742,10 +1120,55 @@
     }).then(function (res) {
       var ok = res.ok;
       $('testMsg').className = 'msg ' + (ok ? 'ok' : 'err');
-      $('testMsg').textContent = ok
-        ? '发送成功（通道：' + res.provider + '）'
-        : '失败：' + (res.error || '未知错误') + '　' + JSON.stringify(res.tried || []);
+      if (ok) {
+        $('testMsg').textContent = '发送成功（通道：' + res.provider + '）' +
+          (res.code ? '　验证码：' + res.code + '（调试模式回显）' : '');
+      } else {
+        var tried = res.tried || [];
+        var detail = tried.map(function (t) { return t.provider + ': ' + t.error; }).join('；');
+        $('testMsg').textContent = '失败：' + (res.error || '未知错误') + (detail ? '（' + detail + '）' : '');
+      }
     });
+  });
+
+  /* ── 我的账号 ── */
+  function loadAccount() {
+    api('/admin/api/session').then(function (res) {
+      if (res && res.username) $('acctName').textContent = res.username;
+    });
+    api('/admin/api/meta').then(function (res) {
+      if (!res || !res.ok || !res.admins) return;
+      $('adminList').innerHTML = '<thead><tr><th>账号</th><th>创建时间</th><th>最近登录</th></tr></thead><tbody>' +
+        res.admins.map(function (a) {
+          return '<tr><td><b>' + esc(a.username) + '</b></td>' +
+            '<td class="tiny muted">' + esc(a.created_at || '-') + '</td>' +
+            '<td class="tiny muted">' + esc(a.last_login_at || '-') + '</td></tr>';
+        }).join('') + '</tbody>';
+    });
+  }
+
+  $('doChangePwd').addEventListener('click', function () {
+    var cur = $('pwdCurrent').value;
+    var np = $('pwdNew').value;
+    var np2 = $('pwdNew2').value;
+    $('pwdMsg').className = 'msg';
+    if (np.length < 8) { $('pwdMsg').className = 'msg err'; $('pwdMsg').textContent = '新密码至少 8 位'; return; }
+    if (np !== np2) { $('pwdMsg').className = 'msg err'; $('pwdMsg').textContent = '两次输入的新密码不一致'; return; }
+    api('/admin/api/password', { method: 'POST', body: { currentPassword: cur, newPassword: np } })
+      .then(function (res) {
+        if (res.ok) {
+          $('pwdMsg').className = 'msg ok';
+          $('pwdMsg').textContent = '密码已修改';
+          $('pwdCurrent').value = ''; $('pwdNew').value = ''; $('pwdNew2').value = '';
+        } else {
+          $('pwdMsg').className = 'msg err';
+          $('pwdMsg').textContent = {
+            BAD_CREDENTIALS: '当前密码不正确',
+            PASSWORD_TOO_SHORT: '新密码至少 8 位',
+            NOT_DB_ADMIN: '当前是环境变量登录，无法在此修改密码',
+          }[res.error] || '修改失败';
+        }
+      });
   });
 
   /* ── 启动 ── */
@@ -759,7 +1182,9 @@
       }
     });
     api('/admin/api/providers').then(function (res) { if (res.ok) $('mockFlag').hidden = !res.mockMode; });
-    loadStats();
+    /* 按地址栏 hash 打开对应页面，默认进概览 */
+    var want = (location.hash || '').replace(/^#/, '');
+    goto(PAGE_META[want] ? want : 'overview');
   }
 
   /* ── 启动：先判断是否需要初始化，再决定显示哪种界面 ── */
