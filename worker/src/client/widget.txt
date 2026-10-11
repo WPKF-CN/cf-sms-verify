@@ -163,7 +163,13 @@
       '#sv-root label{display:block;font-size:12px;font-weight:600;color:#98a2b3;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em;}' +
       '#sv-root .sv-row{display:flex;gap:8px;}' +
       '#sv-root select,#sv-root input{width:100%;height:46px;padding:0 12px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:#0e1116;color:#fff;font-size:15px;outline:none;}' +
-      '#sv-root select{flex:0 0 118px;cursor:pointer;}' +
+      /* 原生 select 的下拉箭头是浏览器画的，位置固定在右侧、不受 padding 控制，
+         导致左边 12px 留白 vs 右边几乎没有留白。这里关掉原生箭头，自己画一个，
+         让左右留白一致（12px）。 */
+      '#sv-root select{flex:0 0 118px;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;' +
+        'padding-right:32px;' +
+        'background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'14\' viewBox=\'0 0 12 14\'%3E%3Cpath fill=\'none\' stroke=\'%239aa4b2\' stroke-width=\'1.6\' stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M2 5.5 6 9.5 10 5.5\'/%3E%3C/svg%3E");' +
+        'background-repeat:no-repeat;background-position:right 12px center;}' +
       '#sv-root input:focus,#sv-root select:focus{border-color:' + accent + ';box-shadow:0 0 0 3px ' + hexA(accent, .18) + ';}' +
       '#sv-root input.sv-code{text-align:center;letter-spacing:.5em;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;padding-left:calc(12px + .5em);}' +
       '#sv-root .sv-btn{width:100%;height:48px;margin-top:14px;border:0;border-radius:11px;background:' + accent + ';color:#fff;font-size:15.5px;font-weight:700;cursor:pointer;transition:filter .15s;}' +
