@@ -190,6 +190,14 @@
   .bars .bar span { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; }
   .bars .bar i { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); font-style: normal; white-space: nowrap; }
   .pill { background: var(--panel2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+  .codebox {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 9px;
+    padding: 12px 14px; overflow-x: auto; margin-top: 10px;
+  }
+  .codebox pre {
+    margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px; line-height: 1.65; color: var(--text); white-space: pre;
+  }
   .hint { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.6; }
   .sticky-save {
     position: sticky; bottom: 0; padding: 14px 0 0; margin-top: 4px;
@@ -307,6 +315,7 @@
       <button data-tab="limits"><span class="ico">◎</span>国家与频控</button>
 
       <div class="grp">落地页</div>
+      <button data-tab="install"><span class="ico">⌘</span>安装代码</button>
       <button data-tab="links"><span class="ico">↗</span>跳转与站点</button>
       <button data-tab="pool"><span class="ico">⛓</span>链接池</button>
       <button data-tab="texts"><span class="ico">✎</span>弹窗文案</button>
@@ -534,6 +543,73 @@
             <label class="f"><span>验证通过后免验时长（小时）</span><input type="number" id="cfgGrantTtl" min="0" /></label>
           </div>
           <div class="hint">免验时长设 0 表示每次点击都要重新验证；设 24 表示通过后 24 小时内免验证。</div>
+        </div>
+      </section>
+
+      <!-- ─── 安装代码 ─── -->
+      <section id="tab-install">
+        <div class="card">
+          <h3>把验证装到落地页</h3>
+          <p class="sub">
+            下面这段代码复制到落地页 <code>&lt;/body&gt;</code> 之前即可生效，<b>原有代码一行都不用改</b>。
+            组件会自动接管页面里的 <code>gotolink(...)</code>：点击按钮先弹窗验证，通过后才跳转。
+          </p>
+
+          <div class="grid">
+            <label class="f"><span>站点标识（site）</span>
+              <input id="insSite" placeholder="ai-lander" autocomplete="off" />
+            </label>
+            <label class="f"><span>Worker 地址（apiBase）</span>
+              <input id="insApi" readonly style="background:var(--panel2);color:var(--muted)" />
+            </label>
+          </div>
+          <div class="hint">
+            站点标识用来在后台区分流量来源（「验证记录」和「链接池」都按它分组）。
+            每个落地页填一个不同的名字，比如 <code>ai-lander</code>、<code>ai-course</code>、<code>fb-lander</code>。
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>① 标准安装（推荐）</h3>
+          <p class="sub">
+            适用于<b>已经有跳转逻辑</b>的落地页（页面里已有 <code>var nbgoto = [...]</code> 和
+            <code>gotolink</code> 函数，比如我们现有的落地页）。
+            把整段粘到 <code>&lt;/body&gt;</code> 之前，<b>原有代码一行都不用改</b>。
+          </p>
+          <div class="codebox"><pre id="insFull"></pre></div>
+          <div class="row" style="margin-top:10px;align-items:center">
+            <button class="btn" id="insCopyFull">复制这段代码</button>
+            <button class="btn ghost sm" id="insCopyConfig">只复制配置</button>
+            <button class="btn ghost sm" id="insCopyTag">只复制引入标签</button>
+            <span class="msg" id="insMsg"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>② 从零新建的落地页</h3>
+          <p class="sub">
+            页面<b>还没有跳转逻辑</b>时用这段。粘进去之后，给按钮加上
+            <code>onclick="gotolink(nbgoto)"</code> 就能用了。
+          </p>
+          <div class="codebox"><pre id="insSkeleton"></pre></div>
+          <div class="row" style="margin-top:10px;align-items:center">
+            <button class="btn ghost" id="insCopySkeleton">复制这段代码</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>装好之后怎么确认</h3>
+          <p class="sub">
+            打开落地页 → 按 F12 打开控制台 → 输入下面这行，回车：
+          </p>
+          <div class="codebox"><pre>window.__smsVerifyInstalled</pre></div>
+          <div class="hint">
+            返回 <code>true</code> = 组件已经接管成功。
+            返回 <code>undefined</code> = 没装上，检查 apiBase 是否填对、Worker 是否可访问。
+            <br />
+            另外：验证通过后 24 小时内（可在「国家与频控」调整）再点按钮<b>不会弹窗、直接跳转</b>，
+            这是正常行为。想重新测一遍，在控制台执行 <code>window.SMSVerify.reset()</code> 再刷新页面。
+          </div>
         </div>
       </section>
 
@@ -848,6 +924,7 @@
     limits: ['国家与频控', '只允许指定国家的号码，并限制发送频率'],
     links: ['跳转与站点', '验证通过后跳去哪里，以及允许哪些站点调用'],
     pool: ['链接池', '按站点管理 WhatsApp 链接：开关、权重、分配上限与统计'],
+    install: ['安装代码', '复制一段代码贴到落地页，就能用上手机号验证'],
     texts: ['弹窗文案', '落地页上验证弹窗显示的文字'],
     account: ['我的账号', '修改后台密码、查看管理员'],
   };
@@ -873,6 +950,7 @@
     if (tab === 'provider') { loadConfig(); loadProviders(); }
     if (tab === 'links') { loadConfig(); loadPoolSummary(); }
     if (tab === 'pool') loadPool();
+    if (tab === 'install') loadInstall();
     if (tab === 'captcha' || tab === 'limits' || tab === 'texts') loadConfig();
     if (tab === 'account') loadAccount();
   }
@@ -1580,6 +1658,144 @@
   });
 
   resetLinkForm();
+
+  /* ══════════ 安装代码 ══════════ */
+  var insSiteEdited = false;
+
+  /** 生成三段可复制的安装代码 */
+  function buildSnippets() {
+    var api = location.origin;
+    var site = ($('insSite').value || '').trim() || 'default';
+    var configBlock =
+      '<!-- ══════ SMS Verify 手机号验证接入 ══════\n' +
+      '     点击按钮 → 人机检测 → 短信验证码 → 通过后才跳转\n' +
+      '     apiBase 留空 = 不加载组件，页面保持原有跳转行为 -->\n' +
+      '<script>\n' +
+      '  window.SMS_VERIFY_CONFIG = {\n' +
+      "    apiBase: '" + api + "',\n" +
+      "    site: '" + site + "',\n" +
+      '    failOpen: true,          // 后端异常时是否仍然放行，避免丢转化\n' +
+      '  };\n' +
+      '  // 可选：埋点回调（TikTok 像素等）\n' +
+      '  window.SMS_VERIFY_CONFIG.onEvent = function (name) {\n' +
+      "    // if (name === 'sms:verified') ttq.track('SubmitForm');\n" +
+      "    // if (name === 'sms:redirect') ttq.track('Contact');\n" +
+      '  };\n' +
+      '<\/script>';
+    var tagBlock =
+      '<!-- 引入验证组件（始终加载 Worker 上的最新版） -->\n' +
+      '<script src="' + api + '/w.js" async><\/script>';
+    var skeleton =
+      '<script>\n' +
+      '  // 1) 链接池：每行一条，前面加 // 可以临时停用某一条\n' +
+      '  var nbgoto = [\n' +
+      "    'https://chat.whatsapp.com/你的群邀请码',\n" +
+      '  ];\n' +
+      '  var expTime = 86400;   // 链接缓存秒数（86400 = 1 天）\n' +
+      '\n' +
+      '  // 2) 缓存读写（带有效期）\n' +
+      '  function setLocalStorageWithExpiry(key, value, ttl) {\n' +
+      '    localStorage.setItem(key, JSON.stringify({ value: value, expiry: Date.now() + ttl }));\n' +
+      '  }\n' +
+      '  function getLocalStorageWithExpiry(key) {\n' +
+      '    var raw = localStorage.getItem(key);\n' +
+      '    if (!raw) return null;\n' +
+      '    var item = JSON.parse(raw);\n' +
+      '    if (Date.now() > item.expiry) { localStorage.removeItem(key); return null; }\n' +
+      '    return item.value;\n' +
+      '  }\n' +
+      '\n' +
+      '  // 3) 跳转函数：按钮统一调用 gotolink(nbgoto)\n' +
+      '  function gotolink(urls) {\n' +
+      '    if (!urls || !urls.length) {\n' +
+      "      alert('There are no spots available at the moment');\n" +
+      '      return;\n' +
+      '    }\n' +
+      '    var url = urls[Math.floor(Math.random() * urls.length)];\n' +
+      '    if (getLocalStorageWithExpiry(\'link1\')) {\n' +
+      '      url = getLocalStorageWithExpiry(\'link1\');\n' +
+      '    } else {\n' +
+      '      setLocalStorageWithExpiry(\'link1\', url, expTime * 1000);\n' +
+      '    }\n' +
+      '    window.open(url);\n' +
+      '  }\n' +
+      '<\/script>\n' +
+      '\n' +
+      configBlock + '\n' +
+      tagBlock;
+
+    return {
+      full: configBlock + '\n\n' + tagBlock,
+      config: configBlock,
+      tag: tagBlock,
+      skeleton: skeleton,
+    };
+  }
+
+  function renderSnippets() {
+    var s = buildSnippets();
+    $('insFull').textContent = s.full;
+    $('insSkeleton').textContent = s.skeleton;
+  }
+
+  function loadInstall() {
+    $('insApi').value = location.origin;
+    /* 拉一次链接池，用已知站点做推荐值（输入框下面还能选） */
+    api('/admin/api/links').then(function (res) {
+      if (res && res.ok && res.sites && res.sites.length) {
+        pool.sites = res.sites;
+      }
+      if (!insSiteEdited) {
+        var guess = (pool.sites && pool.sites.length) ? pool.sites[0] : '';
+        if (!guess) {
+          var host = String(location.hostname || '').split('.')[0];
+          guess = host && host !== 'localhost' ? host : 'my-lander';
+        }
+        $('insSite').value = guess;
+      }
+      renderSnippets();
+    }).catch(function () { renderSnippets(); });
+  }
+
+  $('insSite').addEventListener('input', function () {
+    insSiteEdited = true;
+    renderSnippets();
+  });
+
+  /** 复制到剪贴板，失败时回退到选中文本让用户手动复制 */
+  function copyText(text, msgNode) {
+    var done = function (ok) {
+      msgNode.className = ok ? 'msg ok' : 'msg err';
+      msgNode.textContent = ok ? '已复制' : '复制失败，请手动选中复制';
+      if (!ok) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); msgNode.textContent = '已复制'; msgNode.className = 'msg ok'; } catch (e) { /* ignore */ }
+        ta.remove();
+      }
+      setTimeout(function () { msgNode.textContent = ''; }, 2500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      done(false);
+    }
+  }
+
+  $('insCopyFull').addEventListener('click', function () {
+    copyText(buildSnippets().full, $('insMsg'));
+  });
+  $('insCopyConfig').addEventListener('click', function () {
+    copyText(buildSnippets().config, $('insMsg'));
+  });
+  $('insCopyTag').addEventListener('click', function () {
+    copyText(buildSnippets().tag, $('insMsg'));
+  });
+  $('insCopySkeleton').addEventListener('click', function () {
+    copyText(buildSnippets().skeleton, $('insMsg'));
+  });
 
   /* ── 启动 ── */
   function boot() {
